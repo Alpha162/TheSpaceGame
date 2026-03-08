@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
-import { NODE_RADIUS, COLOUR_CYAN, COLOUR_GREY, COLOUR_DARK_METAL, COLOUR_AMBER } from '../utils/Constants';
+import {
+    NODE_RADIUS, COLOUR_CYAN, COLOUR_GREY, COLOUR_DARK_METAL, COLOUR_AMBER,
+    COLOUR_SELECTION, CONSTRUCTION_TIME_MS
+} from '../utils/Constants';
 
-export type NodeState = 'online' | 'offline' | 'brownout';
+export type NodeState = 'online' | 'offline' | 'brownout' | 'constructing';
 
 export class GameNode extends Phaser.GameObjects.Container {
     nodeRadius: number;
@@ -9,6 +12,10 @@ export class GameNode extends Phaser.GameObjects.Container {
     currentHealth: number;
     powerConsumption: number;
     nodeState: NodeState = 'online';
+    selected = false;
+    constructionProgress = 1; // 0..1, 1 = complete
+    private constructionStartTime = 0;
+    private isConstructing = false;
     protected graphics: Phaser.GameObjects.Graphics;
 
     constructor(
@@ -32,9 +39,46 @@ export class GameNode extends Phaser.GameObjects.Container {
         this.drawNode();
     }
 
+    startConstruction(): void {
+        this.isConstructing = true;
+        this.constructionProgress = 0;
+        this.constructionStartTime = this.scene.time.now;
+        this.nodeState = 'constructing';
+        this.drawNode();
+    }
+
+    isFullyConstructed(): boolean {
+        return !this.isConstructing;
+    }
+
+    updateConstruction(): boolean {
+        if (!this.isConstructing) return false;
+
+        const elapsed = this.scene.time.now - this.constructionStartTime;
+        this.constructionProgress = Math.min(elapsed / CONSTRUCTION_TIME_MS, 1);
+
+        if (this.constructionProgress >= 1) {
+            this.isConstructing = false;
+            this.constructionProgress = 1;
+            this.drawNode();
+            return true; // just finished
+        }
+
+        this.drawNode();
+        return false;
+    }
+
     setNodeState(newState: NodeState): void {
+        if (this.isConstructing && newState !== 'constructing') return;
         if (this.nodeState !== newState) {
             this.nodeState = newState;
+            this.drawNode();
+        }
+    }
+
+    setSelected(value: boolean): void {
+        if (this.selected !== value) {
+            this.selected = value;
             this.drawNode();
         }
     }
@@ -49,7 +93,13 @@ export class GameNode extends Phaser.GameObjects.Container {
         this.graphics.clear();
 
         const colour = this.getStateColour();
-        const alpha = this.nodeState === 'offline' ? 0.4 : 1;
+        const alpha = this.nodeState === 'offline' || this.nodeState === 'constructing' ? 0.4 : 1;
+
+        // Selection ring
+        if (this.selected) {
+            this.graphics.lineStyle(2, COLOUR_SELECTION, 0.8);
+            this.graphics.strokeCircle(0, 0, this.nodeRadius + 4);
+        }
 
         // Outer ring
         this.graphics.lineStyle(2, colour, alpha);
@@ -62,6 +112,18 @@ export class GameNode extends Phaser.GameObjects.Container {
         // Center dot
         this.graphics.fillStyle(colour, alpha);
         this.graphics.fillCircle(0, 0, 3);
+
+        // Construction progress bar
+        if (this.isConstructing) {
+            const barWidth = this.nodeRadius * 2;
+            const barHeight = 3;
+            const barY = this.nodeRadius + 6;
+
+            this.graphics.fillStyle(0x333333, 0.8);
+            this.graphics.fillRect(-barWidth / 2, barY, barWidth, barHeight);
+            this.graphics.fillStyle(COLOUR_AMBER, 0.9);
+            this.graphics.fillRect(-barWidth / 2, barY, barWidth * this.constructionProgress, barHeight);
+        }
     }
 
     protected getStateColour(): number {
@@ -69,6 +131,7 @@ export class GameNode extends Phaser.GameObjects.Container {
             case 'online': return COLOUR_CYAN;
             case 'brownout': return COLOUR_AMBER;
             case 'offline': return COLOUR_GREY;
+            case 'constructing': return COLOUR_GREY;
         }
     }
 

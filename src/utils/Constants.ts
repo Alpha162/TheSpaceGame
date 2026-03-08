@@ -70,3 +70,12 @@ export const BUILD_PHASE_DURATION = 15;
 
 // Node overlap check
 export const MIN_NODE_DISTANCE = 30;
+
+// Construction
+export const CONSTRUCTION_TIME_MS = 3000;
+
+// Selection
+export const COLOUR_SELECTION = 0xffd700;
+
+// Power flow
+export const POWER_PULSE_SPEED = 0.003;

@@ -30,6 +30,10 @@ export class PowerNetwork {
         return this.links;
     }
 
+    getBfsDistances(): Map<GameNode, number> {
+        return this.bfsDistances;
+    }
+
     addNode(node: GameNode): PowerLink[] {
         if (this.adjacency.has(node)) return [];
         this.adjacency.set(node, new Set());
@@ -82,7 +86,7 @@ export class PowerNetwork {
     updateConnectivity(): void {
         if (!this.hub) return;
 
-        // BFS from hub
+        // BFS from hub — only traverse through fully constructed nodes (or the hub itself)
         this.bfsDistances.clear();
         const visited = new Set<GameNode>();
         const queue: Array<{ node: GameNode; distance: number }> = [{ node: this.hub, distance: 0 }];
@@ -94,7 +98,7 @@ export class PowerNetwork {
             const neighbors = this.adjacency.get(node);
             if (neighbors) {
                 for (const neighbor of neighbors) {
-                    if (!visited.has(neighbor)) {
+                    if (!visited.has(neighbor) && neighbor.isFullyConstructed()) {
                         visited.add(neighbor);
                         this.bfsDistances.set(neighbor, distance + 1);
                         queue.push({ node: neighbor, distance: distance + 1 });
@@ -106,7 +110,9 @@ export class PowerNetwork {
         // Update node states
         for (const node of this.adjacency.keys()) {
             if (node === this.hub) continue;
-            if (visited.has(node)) {
+            if (!node.isFullyConstructed()) {
+                node.setNodeState('constructing');
+            } else if (visited.has(node)) {
                 node.setNodeState('online');
             } else {
                 node.setNodeState('offline');
@@ -116,8 +122,9 @@ export class PowerNetwork {
         // Update power distribution
         this.updatePowerDistribution();
 
-        // Update link visuals
+        // Update link visuals and flow direction
         for (const link of this.links) {
+            link.setFlowDirection(this.bfsDistances);
             link.updateState(visited);
         }
     }
@@ -132,7 +139,7 @@ export class PowerNetwork {
         const connectedNodes: Array<{ node: GameNode; distance: number }> = [];
         for (const [node, distance] of this.bfsDistances) {
             if (node === this.hub) continue;
-            if (node.nodeState !== 'offline') {
+            if (node.nodeState !== 'offline' && node.nodeState !== 'constructing') {
                 connectedNodes.push({ node, distance });
                 totalConsumption += node.powerConsumption;
             }
@@ -165,7 +172,7 @@ export class PowerNetwork {
     getPowerUsage(): number {
         let total = 0;
         for (const [node] of this.bfsDistances) {
-            if (node !== this.hub && node.state !== 'offline') {
+            if (node !== this.hub && node.nodeState !== 'offline' && node.nodeState !== 'constructing') {
                 total += node.powerConsumption;
             }
         }

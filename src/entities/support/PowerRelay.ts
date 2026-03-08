@@ -1,5 +1,8 @@
 import { GameNode } from '../Node';
-import { RELAY_HEALTH, RELAY_POWER, RELAY_RADIUS, COLOUR_CYAN, COLOUR_DARK_METAL } from '../../utils/Constants';
+import {
+    RELAY_HEALTH, RELAY_POWER, RELAY_RADIUS,
+    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_SELECTION
+} from '../../utils/Constants';
 
 export class PowerRelay extends GameNode {
     constructor(scene: Phaser.Scene, x: number, y: number) {
@@ -11,7 +14,14 @@ export class PowerRelay extends GameNode {
         this.graphics.clear();
 
         const colour = this.getStateColour();
-        const alpha = this.nodeState === 'offline' ? 0.4 : 1;
+        const isConstructing = this.nodeState === 'constructing';
+        const alpha = (this.nodeState === 'offline' || isConstructing) ? 0.4 : 1;
+
+        // Selection ring
+        if (this.selected) {
+            this.graphics.lineStyle(2, COLOUR_SELECTION, 0.8);
+            this.graphics.strokeCircle(0, 0, this.nodeRadius + 4);
+        }
 
         // Outer ring
         this.graphics.lineStyle(2, colour, alpha);
@@ -30,8 +40,20 @@ export class PowerRelay extends GameNode {
         this.graphics.lineTo(0, 4);
         this.graphics.strokePath();
 
-        // Health bar (if damaged)
-        if (this.currentHealth < this.maxHealth) {
+        // Construction progress bar
+        if (isConstructing) {
+            const barWidth = this.nodeRadius * 2;
+            const barHeight = 3;
+            const barY = this.nodeRadius + 6;
+
+            this.graphics.fillStyle(0x333333, 0.8);
+            this.graphics.fillRect(-barWidth / 2, barY, barWidth, barHeight);
+            this.graphics.fillStyle(COLOUR_AMBER, 0.9);
+            this.graphics.fillRect(-barWidth / 2, barY, barWidth * this.constructionProgress, barHeight);
+        }
+
+        // Health bar (if damaged, only when not constructing)
+        if (!isConstructing && this.currentHealth < this.maxHealth) {
             const barWidth = this.nodeRadius * 2;
             const barHeight = 3;
             const barY = -this.nodeRadius - 8;

@@ -32,6 +32,7 @@ export class BuildSystem {
     private activeBuildType: BuildableType | null = null;
     private isValidPlacement = false;
     private placedNodes: GameNode[] = [];
+    private selectedNode: GameNode | null = null;
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.scene = scene;
@@ -46,25 +47,46 @@ export class BuildSystem {
         this.rangeGraphics.setDepth(99);
         this.rangeGraphics.setVisible(false);
 
-        // Click to place
+        // Click to place or select
         scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (pointer.leftButtonDown() && this.activeBuildType) {
-                this.tryPlace(pointer);
+            if (pointer.leftButtonDown()) {
+                if (this.activeBuildType) {
+                    this.tryPlace(pointer);
+                } else {
+                    this.trySelect(pointer);
+                }
             }
             if (pointer.rightButtonDown()) {
-                this.cancelBuild();
+                if (this.activeBuildType) {
+                    this.cancelBuild();
+                } else {
+                    this.deselectNode();
+                }
             }
         });
 
-        // ESC to cancel
+        // ESC to cancel build or deselect
         if (scene.input.keyboard) {
             scene.input.keyboard.on('keydown-ESC', () => {
-                this.cancelBuild();
+                if (this.activeBuildType) {
+                    this.cancelBuild();
+                } else {
+                    this.deselectNode();
+                }
+            });
+
+            // Delete/Backspace to remove selected node
+            scene.input.keyboard.on('keydown-DELETE', () => {
+                this.deleteSelected();
+            });
+            scene.input.keyboard.on('keydown-BACKSPACE', () => {
+                this.deleteSelected();
             });
         }
     }
 
     startBuild(type: BuildableType): void {
+        this.deselectNode();
         this.activeBuildType = type;
         this.ghostGraphics.setVisible(true);
         this.rangeGraphics.setVisible(true);
@@ -90,13 +112,81 @@ export class BuildSystem {
         return this.placedNodes;
     }
 
+    getSelectedNode(): GameNode | null {
+        return this.selectedNode;
+    }
+
     update(): void {
+        // Update construction progress for all placed nodes
+        for (const node of this.placedNodes) {
+            if (!node.isFullyConstructed()) {
+                const justFinished = node.updateConstruction();
+                if (justFinished) {
+                    // Node just finished constructing, integrate into power network
+                    this.powerNetwork.updateConnectivity();
+                }
+            }
+        }
+
         if (!this.activeBuildType) return;
 
         const pointer = this.scene.input.activePointer;
         const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
 
         this.drawGhost(worldPoint.x, worldPoint.y);
+    }
+
+    private trySelect(pointer: Phaser.Input.Pointer): void {
+        const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+
+        // Find the closest placed node within click range
+        let closest: GameNode | null = null;
+        let closestDist = Infinity;
+
+        for (const node of this.placedNodes) {
+            const dist = distanceBetween(worldPoint.x, worldPoint.y, node.x, node.y);
+            if (dist <= node.nodeRadius + 8 && dist < closestDist) {
+                closest = node;
+                closestDist = dist;
+            }
+        }
+
+        if (closest) {
+            this.deselectNode();
+            this.selectedNode = closest;
+            closest.setSelected(true);
+        } else {
+            this.deselectNode();
+        }
+    }
+
+    private deselectNode(): void {
+        if (this.selectedNode) {
+            this.selectedNode.setSelected(false);
+            this.selectedNode = null;
+        }
+    }
+
+    private deleteSelected(): void {
+        if (!this.selectedNode) return;
+
+        const node = this.selectedNode;
+
+        // Find the config to determine refund amount
+        // For now all placed nodes are relays
+        const config = BUILDABLE_CONFIGS['relay'];
+        this.resourceManager.earn(config.cost);
+
+        // Remove from power network
+        this.powerNetwork.removeNode(node);
+
+        // Remove from placed nodes
+        const idx = this.placedNodes.indexOf(node);
+        if (idx >= 0) this.placedNodes.splice(idx, 1);
+
+        // Destroy the game object
+        this.selectedNode = null;
+        node.destroy();
     }
 
     private drawGhost(wx: number, wy: number): void {
@@ -180,11 +270,13 @@ export class BuildSystem {
                 break;
         }
 
-        // Register in power network
+        // Start construction delay
+        node.startConstruction();
+
+        // Register in power network (links are created but node won't receive power until constructed)
         this.powerNetwork.addNode(node);
         this.placedNodes.push(node);
 
         // Keep building mode active for rapid placement
-        // (user can right-click or ESC to cancel)
     }
 }

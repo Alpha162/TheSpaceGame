@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GameNode } from './Node';
-import { COLOUR_CYAN, COLOUR_AMBER, COLOUR_GREY } from '../utils/Constants';
+import { COLOUR_CYAN, COLOUR_AMBER, COLOUR_GREY, POWER_PULSE_SPEED } from '../utils/Constants';
 
 type LinkState = 'healthy' | 'strained' | 'offline';
 
@@ -10,10 +10,16 @@ export class PowerLink {
     private nodeB: GameNode;
     private state: LinkState = 'healthy';
     private pulseOffset = 0;
+    // Direction: power flows from sourceNode toward sinkNode
+    // sourceNode is the node closer to the hub (lower BFS distance)
+    private sourceNode: GameNode;
+    private sinkNode: GameNode;
 
     constructor(scene: Phaser.Scene, nodeA: GameNode, nodeB: GameNode) {
         this.nodeA = nodeA;
         this.nodeB = nodeB;
+        this.sourceNode = nodeA;
+        this.sinkNode = nodeB;
         this.graphics = scene.add.graphics();
         this.graphics.setDepth(-5);
         this.draw();
@@ -23,11 +29,37 @@ export class PowerLink {
         return this.nodeA === node || this.nodeB === node;
     }
 
+    getNodeA(): GameNode {
+        return this.nodeA;
+    }
+
+    getNodeB(): GameNode {
+        return this.nodeB;
+    }
+
+    /** Set which direction power flows based on BFS distances from hub */
+    setFlowDirection(bfsDistances: Map<GameNode, number>): void {
+        const distA = bfsDistances.get(this.nodeA) ?? Infinity;
+        const distB = bfsDistances.get(this.nodeB) ?? Infinity;
+
+        // Power flows from the node closer to hub (lower distance) to the one further away
+        if (distA <= distB) {
+            this.sourceNode = this.nodeA;
+            this.sinkNode = this.nodeB;
+        } else {
+            this.sourceNode = this.nodeB;
+            this.sinkNode = this.nodeA;
+        }
+    }
+
     updateState(connectedNodes: Set<GameNode>): void {
         const aConnected = connectedNodes.has(this.nodeA);
         const bConnected = connectedNodes.has(this.nodeB);
 
-        if (!aConnected || !bConnected) {
+        // If either node is constructing, treat link as offline
+        if (this.nodeA.nodeState === 'constructing' || this.nodeB.nodeState === 'constructing') {
+            this.state = 'offline';
+        } else if (!aConnected || !bConnected) {
             this.state = 'offline';
         } else if (this.nodeA.nodeState === 'brownout' || this.nodeB.nodeState === 'brownout') {
             this.state = 'strained';
@@ -39,17 +71,19 @@ export class PowerLink {
 
     animate(): void {
         if (this.state === 'offline') return;
-        this.pulseOffset = (this.pulseOffset + 0.02) % 1;
+        // Much slower pulse speed for visible power flow
+        this.pulseOffset = (this.pulseOffset + POWER_PULSE_SPEED) % 1;
         this.draw();
     }
 
     private draw(): void {
         this.graphics.clear();
 
-        const ax = this.nodeA.x;
-        const ay = this.nodeA.y;
-        const bx = this.nodeB.x;
-        const by = this.nodeB.y;
+        // Power flows from source (closer to hub) to sink (further from hub)
+        const ax = this.sourceNode.x;
+        const ay = this.sourceNode.y;
+        const bx = this.sinkNode.x;
+        const by = this.sinkNode.y;
 
         let colour: number;
         let alpha: number;
@@ -89,16 +123,16 @@ export class PowerLink {
             this.graphics.strokePath();
         }
 
-        // Energy pulse particles along line
+        // Energy pulse particles flowing from source to sink
         if (this.state !== 'offline') {
-            const pulseCount = 3;
+            const pulseCount = 2;
             for (let i = 0; i < pulseCount; i++) {
                 const t = (this.pulseOffset + i / pulseCount) % 1;
                 const px = ax + (bx - ax) * t;
                 const py = ay + (by - ay) * t;
                 const pulseAlpha = Math.sin(t * Math.PI) * alpha;
                 this.graphics.fillStyle(colour, pulseAlpha);
-                this.graphics.fillCircle(px, py, 2);
+                this.graphics.fillCircle(px, py, 3);
             }
         }
     }
