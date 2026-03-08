@@ -135,10 +135,8 @@ export class PowerNetwork {
                 node.setNodeState('constructing');
                 node.constructionPowered = visited.has(node);
             } else if (visited.has(node)) {
-                // Mark as online initially; power tick will set brownout if needed
-                if (node.nodeState === 'offline') {
-                    node.setNodeState('online');
-                }
+                // Mark as online; power distribution will set brownout if needed
+                node.setNodeState('online');
             } else {
                 node.setNodeState('offline');
             }
