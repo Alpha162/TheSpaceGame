@@ -1,7 +1,5 @@
 import Phaser from 'phaser';
 import { GameNode } from './Node';
-import { CommandHub } from './CommandHub';
-import { PowerRelay } from './support/PowerRelay';
 import { COLOUR_CYAN, COLOUR_AMBER, COLOUR_GREY, POWER_PULSE_SPEED } from '../utils/Constants';
 
 type LinkState = 'healthy' | 'strained' | 'offline';
@@ -12,6 +10,7 @@ export class PowerLink {
     private nodeB: GameNode;
     private state: LinkState = 'healthy';
     private pulseOffset = 0;
+    private _showPulses = true;
     // Direction: power flows from sourceNode toward sinkNode
     // sourceNode is the node closer to the hub (lower BFS distance)
     private sourceNode: GameNode;
@@ -52,6 +51,11 @@ export class PowerLink {
             this.sourceNode = this.nodeB;
             this.sinkNode = this.nodeA;
         }
+    }
+
+    /** Whether this link should show animated power pulses */
+    setShowPulses(show: boolean): void {
+        this._showPulses = show;
     }
 
     updateState(connectedNodes: Set<GameNode>): void {
@@ -124,11 +128,8 @@ export class PowerLink {
         }
 
         // Energy pulse particles flowing from source to sink
-        // Show pulses on links feeding consumer nodes, or links to relays still under construction
-        // Once a relay is fully built it becomes an invisible conduit (no pulses)
-        const isPassiveConduit = (n: GameNode) =>
-            (n instanceof PowerRelay && n.isFullyConstructed()) || n instanceof CommandHub;
-        if (this.state !== 'offline' && !(isPassiveConduit(this.nodeA) && isPassiveConduit(this.nodeB))) {
+        // Only show pulses on links that carry power to a downstream consumer
+        if (this.state !== 'offline' && this._showPulses) {
             const pulseCount = 2;
             for (let i = 0; i < pulseCount; i++) {
                 const t = (this.pulseOffset + i / pulseCount) % 1;
