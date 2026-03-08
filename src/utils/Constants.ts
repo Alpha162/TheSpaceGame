@@ -1,0 +1,72 @@
+// World
+export const WORLD_WIDTH = 2400;
+export const WORLD_HEIGHT = 1800;
+export const VIEWPORT_WIDTH = 800;
+export const VIEWPORT_HEIGHT = 600;
+export const CAMERA_SCROLL_SPEED = 8;
+export const CAMERA_EDGE_ZONE = 32;
+
+// Starfield
+export const STAR_LAYER_COUNT = 3;
+export const STARS_PER_LAYER = [200, 120, 60];
+export const STAR_SIZES = [1, 1.5, 2.5];
+export const STAR_ALPHAS = [0.3, 0.5, 0.8];
+export const STAR_PARALLAX = [0.2, 0.5, 0.8];
+
+// Command Hub
+export const COMMAND_HUB_HEALTH = 500;
+export const COMMAND_HUB_POWER_GEN = 100;
+export const COMMAND_HUB_RADIUS = 30;
+
+// Resources
+export const STARTING_MINERALS = 300;
+
+// Power
+export const MAX_POWER_LINK_LENGTH = 200;
+
+// Structure power consumption
+export const BASIC_MINER_POWER = 5;
+export const DEEP_MINER_POWER = 15;
+export const STRIP_MINER_POWER = 10;
+export const BLASTER_POWER = 8;
+export const RAIL_POWER = 20;
+export const MISSILE_POWER = 18;
+export const TESLA_POWER = 25;
+export const RELAY_POWER = 2;
+export const REPAIR_BAY_POWER = 12;
+
+// Structure costs
+export const RELAY_COST = 40;
+export const BASIC_MINER_COST = 50;
+export const BLASTER_COST = 75;
+export const STRIP_MINER_COST = 150;
+export const REPAIR_BAY_COST = 175;
+export const DEEP_MINER_COST = 200;
+export const RAIL_COST = 200;
+export const MISSILE_COST = 250;
+export const TESLA_COST = 300;
+
+// Structure health
+export const RELAY_HEALTH = 50;
+
+// Node rendering
+export const NODE_RADIUS = 12;
+export const RELAY_RADIUS = 10;
+
+// Colours
+export const COLOUR_CYAN = 0x00e5ff;
+export const COLOUR_CYAN_DIM = 0x006680;
+export const COLOUR_AMBER = 0xffab00;
+export const COLOUR_RED = 0xff3d00;
+export const COLOUR_GREY = 0x444444;
+export const COLOUR_DARK_METAL = 0x2a2a3a;
+export const COLOUR_WHITE = 0xffffff;
+export const COLOUR_BG = 0x0a0a1a;
+export const COLOUR_PANEL = 0x1a1a2e;
+export const COLOUR_PANEL_BORDER = 0x333355;
+
+// Build phase
+export const BUILD_PHASE_DURATION = 15;
+
+// Node overlap check
+export const MIN_NODE_DISTANCE = 30;
