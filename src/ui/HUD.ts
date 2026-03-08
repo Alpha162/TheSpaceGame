@@ -11,6 +11,8 @@ export class HUD {
     private powerBar: Phaser.GameObjects.Graphics;
     private bgGraphics: Phaser.GameObjects.Graphics;
 
+    private allObjects: Phaser.GameObjects.GameObject[] = [];
+
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
@@ -42,6 +44,12 @@ export class HUD {
         this.powerBar = scene.add.graphics();
         this.powerBar.setScrollFactor(0);
         this.powerBar.setDepth(201);
+
+        this.allObjects = [this.bgGraphics, this.mineralText, this.powerText, this.powerBar];
+    }
+
+    getGameObjects(): Phaser.GameObjects.GameObject[] {
+        return this.allObjects;
     }
 
     update(): void {

@@ -22,6 +22,7 @@ export class GameScene extends Phaser.Scene {
     hud!: HUD;
     buildMenu!: BuildMenu;
     starLayers: Phaser.GameObjects.Graphics[] = [];
+    private uiObjects: Set<Phaser.GameObjects.GameObject> = new Set();
 
     constructor() {
         super({ key: 'GameScene' });
@@ -51,6 +52,28 @@ export class GameScene extends Phaser.Scene {
 
         // Camera setup
         this.cameras.main.centerOn(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+
+        // UI camera – separate from main so zoom doesn't affect HUD
+        const uiObjectsList = [
+            ...this.hud.getGameObjects(),
+            ...this.buildMenu.getGameObjects()
+        ];
+        this.uiObjects = new Set(uiObjectsList);
+        this.cameras.main.ignore(uiObjectsList);
+        const uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        uiCam.setScroll(0, 0);
+        // UI camera only renders UI objects – ignore everything else
+        this.children.each((child) => {
+            if (!this.uiObjects.has(child)) {
+                uiCam.ignore(child);
+            }
+        });
+        // Auto-ignore new world objects on UI camera
+        this.events.on('addedtoscene', (child: Phaser.GameObjects.GameObject) => {
+            if (!this.uiObjects.has(child)) {
+                uiCam.ignore(child);
+            }
+        });
 
         // Keyboard input (WASD only)
         if (this.input.keyboard) {

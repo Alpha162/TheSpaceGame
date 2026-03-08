@@ -18,6 +18,7 @@ export class BuildMenu {
     private buildSystem: BuildSystem;
     private buttons: MenuButton[] = [];
     private bgGraphics: Phaser.GameObjects.Graphics;
+    private allObjects: Phaser.GameObjects.GameObject[] = [];
 
     constructor(scene: Phaser.Scene, buildSystem: BuildSystem) {
         this.scene = scene;
@@ -33,6 +34,7 @@ export class BuildMenu {
         this.bgGraphics.fillRoundedRect(4, panelY, 200, 64, 4);
         this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
         this.bgGraphics.strokeRoundedRect(4, panelY, 200, 64, 4);
+        this.allObjects.push(this.bgGraphics);
 
         // Build buttons
         this.createButton('relay', 12, panelY + 6, 80, 52);
@@ -67,12 +69,14 @@ export class BuildMenu {
 
         const button: MenuButton = { bg, text, costText, type, x, y, width, height };
         this.buttons.push(button);
+        this.allObjects.push(bg, text, costText);
 
         // Make interactive via zone
         const zone = this.scene.add.zone(x + width / 2, y + height / 2, width, height)
             .setScrollFactor(0)
             .setDepth(203)
             .setInteractive({ useHandCursor: true });
+        this.allObjects.push(zone);
 
         zone.on('pointerdown', () => {
             this.buildSystem.startBuild(type);
@@ -109,5 +113,9 @@ export class BuildMenu {
             this.drawButton(button, isActive);
             button.text.setColor(isActive ? '#00e5ff' : '#ffffff');
         }
+    }
+
+    getGameObjects(): Phaser.GameObjects.GameObject[] {
+        return this.allObjects;
     }
 }
