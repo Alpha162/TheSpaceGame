@@ -118,6 +118,8 @@ export class PowerNetwork {
             if (node === this.hub) continue;
             if (!node.isFullyConstructed()) {
                 node.setNodeState('constructing');
+                // Construction only progresses if reachable through fully-built nodes
+                node.constructionPowered = visited.has(node);
             } else if (visited.has(node)) {
                 node.setNodeState('online');
             } else {

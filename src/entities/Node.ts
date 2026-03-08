@@ -14,8 +14,9 @@ export class GameNode extends Phaser.GameObjects.Container {
     nodeState: NodeState = 'online';
     selected = false;
     constructionProgress = 1; // 0..1, 1 = complete
-    private constructionStartTime = 0;
     private isConstructing = false;
+    private lastConstructionTime = 0;
+    constructionPowered = true; // whether this node has a valid powered path for construction
     protected graphics: Phaser.GameObjects.Graphics;
 
     constructor(
@@ -42,7 +43,7 @@ export class GameNode extends Phaser.GameObjects.Container {
     startConstruction(): void {
         this.isConstructing = true;
         this.constructionProgress = 0;
-        this.constructionStartTime = this.scene.time.now;
+        this.lastConstructionTime = this.scene.time.now;
         this.nodeState = 'constructing';
         this.drawNode();
     }
@@ -54,8 +55,15 @@ export class GameNode extends Phaser.GameObjects.Container {
     updateConstruction(): boolean {
         if (!this.isConstructing) return false;
 
-        const elapsed = this.scene.time.now - this.constructionStartTime;
-        this.constructionProgress = Math.min(elapsed / CONSTRUCTION_TIME_MS, 1);
+        const now = this.scene.time.now;
+
+        // Only accumulate progress when powered (valid path to hub)
+        if (this.constructionPowered) {
+            const delta = now - this.lastConstructionTime;
+            this.constructionProgress = Math.min(this.constructionProgress + delta / CONSTRUCTION_TIME_MS, 1);
+        }
+
+        this.lastConstructionTime = now;
 
         if (this.constructionProgress >= 1) {
             this.isConstructing = false;
