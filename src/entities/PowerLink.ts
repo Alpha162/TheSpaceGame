@@ -58,12 +58,10 @@ export class PowerLink {
         const aConnected = connectedNodes.has(this.nodeA);
         const bConnected = connectedNodes.has(this.nodeB);
 
-        // If either node is constructing, treat link as offline
-        if (this.nodeA.nodeState === 'constructing' || this.nodeB.nodeState === 'constructing') {
+        if (!aConnected || !bConnected) {
             this.state = 'offline';
-        } else if (!aConnected || !bConnected) {
-            this.state = 'offline';
-        } else if (this.nodeA.nodeState === 'brownout' || this.nodeB.nodeState === 'brownout') {
+        } else if (this.nodeA.nodeState === 'brownout' || this.nodeB.nodeState === 'brownout'
+                || this.nodeA.nodeState === 'constructing' || this.nodeB.nodeState === 'constructing') {
             this.state = 'strained';
         } else {
             this.state = 'healthy';
@@ -126,9 +124,11 @@ export class PowerLink {
         }
 
         // Energy pulse particles flowing from source to sink
-        // Only show pulses on links that feed actual consumer nodes (not hub-to-relay or relay-to-relay)
-        const isRelayOrHub = (n: GameNode) => n instanceof PowerRelay || n instanceof CommandHub;
-        if (this.state !== 'offline' && !(isRelayOrHub(this.nodeA) && isRelayOrHub(this.nodeB))) {
+        // Show pulses on links feeding consumer nodes, or links to relays still under construction
+        // Once a relay is fully built it becomes an invisible conduit (no pulses)
+        const isPassiveConduit = (n: GameNode) =>
+            (n instanceof PowerRelay && n.isFullyConstructed()) || n instanceof CommandHub;
+        if (this.state !== 'offline' && !(isPassiveConduit(this.nodeA) && isPassiveConduit(this.nodeB))) {
             const pulseCount = 2;
             for (let i = 0; i < pulseCount; i++) {
                 const t = (this.pulseOffset + i / pulseCount) % 1;

@@ -86,7 +86,8 @@ export class PowerNetwork {
     updateConnectivity(): void {
         if (!this.hub) return;
 
-        // BFS from hub — only traverse through fully constructed nodes (or the hub itself)
+        // BFS from hub — traverse through fully constructed nodes, and reach
+        // (but don't traverse through) constructing nodes so they can draw power
         this.bfsDistances.clear();
         const visited = new Set<GameNode>();
         const queue: Array<{ node: GameNode; distance: number }> = [{ node: this.hub, distance: 0 }];
@@ -98,10 +99,14 @@ export class PowerNetwork {
             const neighbors = this.adjacency.get(node);
             if (neighbors) {
                 for (const neighbor of neighbors) {
-                    if (!visited.has(neighbor) && neighbor.isFullyConstructed()) {
+                    if (!visited.has(neighbor)) {
                         visited.add(neighbor);
                         this.bfsDistances.set(neighbor, distance + 1);
-                        queue.push({ node: neighbor, distance: distance + 1 });
+                        // Only continue traversal through fully constructed nodes
+                        // Constructing nodes are reachable (draw power) but not conduits
+                        if (neighbor.isFullyConstructed()) {
+                            queue.push({ node: neighbor, distance: distance + 1 });
+                        }
                     }
                 }
             }
@@ -139,7 +144,7 @@ export class PowerNetwork {
         const connectedNodes: Array<{ node: GameNode; distance: number }> = [];
         for (const [node, distance] of this.bfsDistances) {
             if (node === this.hub) continue;
-            if (node.nodeState !== 'offline' && node.nodeState !== 'constructing') {
+            if (node.nodeState !== 'offline') {
                 connectedNodes.push({ node, distance });
                 totalConsumption += node.powerConsumption;
             }
@@ -148,6 +153,7 @@ export class PowerNetwork {
         if (totalConsumption <= totalGeneration) {
             // All connected nodes are fine
             for (const { node } of connectedNodes) {
+                // Don't overwrite constructing state — it still needs to finish building
                 if (node.nodeState === 'brownout') {
                     node.setNodeState('online');
                 }
@@ -160,6 +166,8 @@ export class PowerNetwork {
 
         let remaining = totalConsumption;
         for (const { node } of connectedNodes) {
+            // Don't overwrite constructing state
+            if (node.nodeState === 'constructing') continue;
             if (remaining <= totalGeneration) {
                 node.setNodeState('online');
             } else {
