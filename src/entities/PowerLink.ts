@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { GameNode } from './Node';
+import { CommandHub } from './CommandHub';
+import { PowerRelay } from './support/PowerRelay';
 import { COLOUR_CYAN, COLOUR_AMBER, COLOUR_GREY, POWER_PULSE_SPEED } from '../utils/Constants';
 
 type LinkState = 'healthy' | 'strained' | 'offline';
@@ -124,7 +126,9 @@ export class PowerLink {
         }
 
         // Energy pulse particles flowing from source to sink
-        if (this.state !== 'offline') {
+        // Only show pulses on links that feed actual consumer nodes (not hub-to-relay or relay-to-relay)
+        const isRelayOrHub = (n: GameNode) => n instanceof PowerRelay || n instanceof CommandHub;
+        if (this.state !== 'offline' && !(isRelayOrHub(this.nodeA) && isRelayOrHub(this.nodeB))) {
             const pulseCount = 2;
             for (let i = 0; i < pulseCount; i++) {
                 const t = (this.pulseOffset + i / pulseCount) % 1;
