@@ -1,16 +1,20 @@
 import Phaser from 'phaser';
 import { GameNode } from '../entities/Node';
 import { PowerRelay } from '../entities/support/PowerRelay';
+import { Capacitor } from '../entities/support/Capacitor';
+import { Shield } from '../entities/defence/Shield';
 import { ResourceManager } from './ResourceManager';
 import { PowerNetwork } from './PowerNetwork';
 import {
     MAX_POWER_LINK_LENGTH, MIN_NODE_DISTANCE,
-    RELAY_COST, RELAY_RADIUS,
+    RELAY_COST, RELAY_RADIUS, RELAY_POWER,
+    SHIELD_COST, SHIELD_RADIUS, SHIELD_POWER_DEPLOY,
+    CAPACITOR_COST, CAPACITOR_RADIUS, CAPACITOR_POWER_CHARGE,
     COLOUR_CYAN, COLOUR_RED, COLOUR_GREY
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
-export type BuildableType = 'relay';
+export type BuildableType = 'relay' | 'shield' | 'capacitor';
 
 interface BuildableConfig {
     cost: number;
@@ -20,7 +24,9 @@ interface BuildableConfig {
 }
 
 export const BUILDABLE_CONFIGS: Record<BuildableType, BuildableConfig> = {
-    relay: { cost: RELAY_COST, radius: RELAY_RADIUS, powerConsumption: 2, label: 'Power Relay' }
+    relay: { cost: RELAY_COST, radius: RELAY_RADIUS, powerConsumption: RELAY_POWER, label: 'Power Relay' },
+    shield: { cost: SHIELD_COST, radius: SHIELD_RADIUS, powerConsumption: SHIELD_POWER_DEPLOY, label: 'Shield' },
+    capacitor: { cost: CAPACITOR_COST, radius: CAPACITOR_RADIUS, powerConsumption: CAPACITOR_POWER_CHARGE, label: 'Capacitor' }
 };
 
 export class BuildSystem {
@@ -172,10 +178,14 @@ export class BuildSystem {
 
         const node = this.selectedNode;
 
-        // Find the config to determine refund amount
-        // For now all placed nodes are relays
-        const config = BUILDABLE_CONFIGS['relay'];
-        this.resourceManager.earn(config.cost);
+        // Determine refund based on node type
+        let refundCost = RELAY_COST; // default
+        if (node instanceof Shield) {
+            refundCost = SHIELD_COST;
+        } else if (node instanceof Capacitor) {
+            refundCost = CAPACITOR_COST;
+        }
+        this.resourceManager.earn(refundCost);
 
         // Remove from power network
         this.powerNetwork.removeNode(node);
@@ -267,6 +277,12 @@ export class BuildSystem {
         switch (this.activeBuildType) {
             case 'relay':
                 node = new PowerRelay(this.scene, worldPoint.x, worldPoint.y);
+                break;
+            case 'shield':
+                node = new Shield(this.scene, worldPoint.x, worldPoint.y);
+                break;
+            case 'capacitor':
+                node = new Capacitor(this.scene, worldPoint.x, worldPoint.y);
                 break;
         }
 

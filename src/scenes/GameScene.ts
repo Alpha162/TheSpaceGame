@@ -96,10 +96,10 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
-    update(_time: number, _delta: number): void {
+    update(_time: number, delta: number): void {
         this.handleCameraMovement();
         this.buildSystem.update();
-        this.powerNetwork.update();
+        this.powerNetwork.update(delta);
         this.hud.update();
     }
 

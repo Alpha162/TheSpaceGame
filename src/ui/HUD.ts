@@ -1,14 +1,20 @@
 import Phaser from 'phaser';
 import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
-import { VIEWPORT_WIDTH, COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_CYAN, COLOUR_AMBER } from '../utils/Constants';
+import {
+    VIEWPORT_WIDTH, COLOUR_PANEL, COLOUR_PANEL_BORDER,
+    COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED, COLOUR_PURPLE
+} from '../utils/Constants';
 
 export class HUD {
     private resourceManager: ResourceManager;
     private powerNetwork: PowerNetwork;
     private mineralText: Phaser.GameObjects.Text;
-    private powerText: Phaser.GameObjects.Text;
+    private powerGenText: Phaser.GameObjects.Text;
+    private powerDemandText: Phaser.GameObjects.Text;
+    private capacitorText: Phaser.GameObjects.Text;
     private powerBar: Phaser.GameObjects.Graphics;
+    private capacitorBar: Phaser.GameObjects.Graphics;
     private bgGraphics: Phaser.GameObjects.Graphics;
 
     private allObjects: Phaser.GameObjects.GameObject[] = [];
@@ -17,35 +23,55 @@ export class HUD {
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
 
-        // Background panel (fixed to camera)
+        // Background panel (taller to fit two rows)
         this.bgGraphics = scene.add.graphics();
         this.bgGraphics.setScrollFactor(0);
         this.bgGraphics.setDepth(200);
         this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
-        this.bgGraphics.fillRoundedRect(4, 4, VIEWPORT_WIDTH - 8, 36, 4);
+        this.bgGraphics.fillRoundedRect(4, 4, VIEWPORT_WIDTH - 8, 52, 4);
         this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
-        this.bgGraphics.strokeRoundedRect(4, 4, VIEWPORT_WIDTH - 8, 36, 4);
+        this.bgGraphics.strokeRoundedRect(4, 4, VIEWPORT_WIDTH - 8, 52, 4);
 
-        // Mineral display
+        // Row 1: Minerals + Power generation/demand
         this.mineralText = scene.add.text(16, 10, '', {
             fontFamily: 'monospace',
-            fontSize: '16px',
+            fontSize: '14px',
             color: '#ffab00'
         }).setScrollFactor(0).setDepth(201);
 
-        // Power display
-        this.powerText = scene.add.text(240, 10, '', {
+        this.powerGenText = scene.add.text(160, 10, '', {
             fontFamily: 'monospace',
-            fontSize: '16px',
+            fontSize: '14px',
             color: '#00e5ff'
         }).setScrollFactor(0).setDepth(201);
 
-        // Power bar
+        this.powerDemandText = scene.add.text(310, 10, '', {
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            color: '#00e5ff'
+        }).setScrollFactor(0).setDepth(201);
+
+        // Power bar (generation vs demand)
         this.powerBar = scene.add.graphics();
         this.powerBar.setScrollFactor(0);
         this.powerBar.setDepth(201);
 
-        this.allObjects = [this.bgGraphics, this.mineralText, this.powerText, this.powerBar];
+        // Row 2: Capacitor storage
+        this.capacitorText = scene.add.text(16, 33, '', {
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            color: '#aa44ff'
+        }).setScrollFactor(0).setDepth(201);
+
+        this.capacitorBar = scene.add.graphics();
+        this.capacitorBar.setScrollFactor(0);
+        this.capacitorBar.setDepth(201);
+
+        this.allObjects = [
+            this.bgGraphics, this.mineralText, this.powerGenText,
+            this.powerDemandText, this.powerBar,
+            this.capacitorText, this.capacitorBar
+        ];
     }
 
     getGameObjects(): Phaser.GameObjects.GameObject[] {
@@ -57,15 +83,30 @@ export class HUD {
         const minerals = this.resourceManager.getMinerals();
         this.mineralText.setText(`Minerals: ${minerals}`);
 
-        // Power
-        const used = this.powerNetwork.getPowerUsage();
-        const capacity = this.powerNetwork.getPowerCapacity();
-        this.powerText.setText(`Power: ${used}/${capacity}`);
+        // Power economy
+        const gen = this.powerNetwork.totalGeneration;
+        const demand = this.powerNetwork.totalDemand;
+        const surplus = gen - demand;
+        const discharging = this.powerNetwork.capacitorDischarging;
+
+        this.powerGenText.setText(`Gen: ${gen}`);
+
+        // Demand text with colour coding
+        let demandColour = '#00e5ff'; // cyan - fine
+        if (demand > gen && discharging > 0) {
+            demandColour = '#aa44ff'; // purple - capacitor supplementing
+        } else if (demand > gen) {
+            demandColour = '#ff3d00'; // red - over budget
+        } else if (demand > gen * 0.8) {
+            demandColour = '#ffab00'; // amber - getting close
+        }
+        this.powerDemandText.setColor(demandColour);
+        this.powerDemandText.setText(`Demand: ${demand}`);
 
         // Power bar
         this.powerBar.clear();
-        const barX = 400;
-        const barY = 14;
+        const barX = 470;
+        const barY = 11;
         const barW = 150;
         const barH = 14;
 
@@ -73,14 +114,64 @@ export class HUD {
         this.powerBar.fillStyle(0x222222, 0.8);
         this.powerBar.fillRect(barX, barY, barW, barH);
 
-        // Fill
-        const pct = capacity > 0 ? Math.min(used / capacity, 1) : 0;
-        const barColour = pct > 0.8 ? COLOUR_AMBER : COLOUR_CYAN;
+        // Fill — demand as proportion of generation
+        const pct = gen > 0 ? Math.min(demand / gen, 1) : 0;
+        let barColour = COLOUR_CYAN;
+        if (pct > 0.95) barColour = COLOUR_RED;
+        else if (pct > 0.8) barColour = COLOUR_AMBER;
+
         this.powerBar.fillStyle(barColour, 0.8);
         this.powerBar.fillRect(barX, barY, barW * pct, barH);
+
+        // If capacitors are supplementing, show discharge indicator
+        if (discharging > 0 && gen > 0) {
+            const dischargePct = Math.min(discharging / gen, 1 - pct);
+            this.powerBar.fillStyle(COLOUR_PURPLE, 0.6);
+            this.powerBar.fillRect(barX + barW * pct, barY, barW * dischargePct, barH);
+        }
+
+        // Surplus/deficit indicator
+        if (surplus >= 0) {
+            this.powerGenText.setText(`Gen: ${gen} (+${surplus})`);
+        } else {
+            this.powerGenText.setText(`Gen: ${gen} (${surplus})`);
+        }
 
         // Border
         this.powerBar.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
         this.powerBar.strokeRect(barX, barY, barW, barH);
+
+        // Capacitor row
+        const capStored = Math.floor(this.powerNetwork.capacitorStored);
+        const capMax = this.powerNetwork.capacitorMax;
+
+        this.capacitorBar.clear();
+
+        if (capMax > 0) {
+            this.capacitorText.setText(`Cap: ${capStored}/${capMax}`);
+            this.capacitorText.setVisible(true);
+
+            const capBarX = 160;
+            const capBarY = 35;
+            const capBarW = 120;
+            const capBarH = 10;
+
+            // Background
+            this.capacitorBar.fillStyle(0x222222, 0.8);
+            this.capacitorBar.fillRect(capBarX, capBarY, capBarW, capBarH);
+
+            // Fill
+            const capPct = capMax > 0 ? capStored / capMax : 0;
+            const capColour = capPct > 0.6 ? COLOUR_PURPLE : COLOUR_CYAN;
+            this.capacitorBar.fillStyle(capColour, 0.7);
+            this.capacitorBar.fillRect(capBarX, capBarY, capBarW * capPct, capBarH);
+
+            // Border
+            this.capacitorBar.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
+            this.capacitorBar.strokeRect(capBarX, capBarY, capBarW, capBarH);
+        } else {
+            this.capacitorText.setText('');
+            this.capacitorText.setVisible(false);
+        }
     }
 }

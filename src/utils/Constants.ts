@@ -18,7 +18,7 @@ export const STAR_PARALLAX = [0.2, 0.5, 0.8];
 
 // Command Hub
 export const COMMAND_HUB_HEALTH = 500;
-export const COMMAND_HUB_POWER_GEN = 100;
+export const COMMAND_HUB_POWER_GEN = 100; // power generated per tick
 export const COMMAND_HUB_RADIUS = 30;
 
 // Resources
@@ -26,6 +26,15 @@ export const STARTING_MINERALS = 300;
 
 // Power
 export const MAX_POWER_LINK_LENGTH = 200;
+export const POWER_TICK_INTERVAL_MS = 500; // power economy updates every 500ms
+
+// Power priority tiers
+export enum PowerPriority {
+    CRITICAL = 0,
+    HIGH = 1,
+    NORMAL = 2,
+    LOW = 3
+}
 
 // Structure power consumption
 export const BASIC_MINER_POWER = 5;
@@ -37,6 +46,26 @@ export const MISSILE_POWER = 18;
 export const TESLA_POWER = 25;
 export const RELAY_POWER = 2;
 export const REPAIR_BAY_POWER = 12;
+
+// Shield constants
+export const SHIELD_HEALTH = 80;
+export const SHIELD_RADIUS = 14;
+export const SHIELD_COST = 120;
+export const SHIELD_POWER_DEPLOY = 20;   // power while bubble is expanding
+export const SHIELD_POWER_MAINTAIN = 5;  // power to maintain deployed shield
+export const SHIELD_BUBBLE_MAX_RADIUS = 60; // fully deployed bubble radius
+export const SHIELD_DEPLOY_SPEED = 0.4;  // radius units per frame
+export const SHIELD_HEAT_DECAY = 0.003;  // heat decay per frame (0..1)
+export const SHIELD_COLLAPSE_COOLDOWN_MS = 5000; // cooldown after overheat collapse
+export const SHIELD_ABSORB_HEAT_PER_DAMAGE = 0.1; // heat added per damage point
+
+// Capacitor constants
+export const CAPACITOR_HEALTH = 60;
+export const CAPACITOR_RADIUS = 11;
+export const CAPACITOR_COST = 80;
+export const CAPACITOR_POWER_CHARGE = 10; // max power absorbed per tick
+export const CAPACITOR_MAX_STORAGE = 500; // max energy stored
+export const CAPACITOR_DISCHARGE_RATE = 50; // max power released per tick
 
 // Structure costs
 export const RELAY_COST = 40;
@@ -67,6 +96,8 @@ export const COLOUR_WHITE = 0xffffff;
 export const COLOUR_BG = 0x0a0a1a;
 export const COLOUR_PANEL = 0x1a1a2e;
 export const COLOUR_PANEL_BORDER = 0x333355;
+export const COLOUR_GREEN = 0x00ff88;
+export const COLOUR_PURPLE = 0xaa44ff;
 
 // Build phase
 export const BUILD_PHASE_DURATION = 15;

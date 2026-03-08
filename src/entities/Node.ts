@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {
     NODE_RADIUS, COLOUR_CYAN, COLOUR_GREY, COLOUR_DARK_METAL, COLOUR_AMBER,
-    COLOUR_SELECTION, CONSTRUCTION_TIME_MS
+    COLOUR_SELECTION, CONSTRUCTION_TIME_MS, PowerPriority
 } from '../utils/Constants';
 
 export type NodeState = 'online' | 'offline' | 'brownout' | 'constructing';
@@ -11,6 +11,7 @@ export class GameNode extends Phaser.GameObjects.Container {
     maxHealth: number;
     currentHealth: number;
     powerConsumption: number;
+    powerPriority: PowerPriority = PowerPriority.NORMAL;
     nodeState: NodeState = 'online';
     selected = false;
     constructionProgress = 1; // 0..1, 1 = complete
@@ -89,6 +90,16 @@ export class GameNode extends Phaser.GameObjects.Container {
             this.selected = value;
             this.drawNode();
         }
+    }
+
+    /** Returns the current power draw for this tick. Override for dynamic consumption. */
+    getCurrentPowerDraw(): number {
+        return this.powerConsumption;
+    }
+
+    /** Called each power tick when node is online. Override for per-tick behaviour. */
+    onPowerTick(_delta: number): void {
+        // Base class does nothing
     }
 
     takeDamage(amount: number): boolean {

@@ -30,19 +30,36 @@ export class BuildMenu {
         this.bgGraphics.setDepth(200);
 
         const panelY = VIEWPORT_HEIGHT - 70;
+        const panelW = 280;
         this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
-        this.bgGraphics.fillRoundedRect(4, panelY, 200, 64, 4);
+        this.bgGraphics.fillRoundedRect(4, panelY, panelW, 64, 4);
         this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
-        this.bgGraphics.strokeRoundedRect(4, panelY, 200, 64, 4);
+        this.bgGraphics.strokeRoundedRect(4, panelY, panelW, 64, 4);
         this.allObjects.push(this.bgGraphics);
 
         // Build buttons
-        this.createButton('relay', 12, panelY + 6, 80, 52);
+        const btnW = 84;
+        const btnH = 52;
+        const gap = 6;
+        let bx = 12;
+        this.createButton('relay', bx, panelY + 6, btnW, btnH);
+        bx += btnW + gap;
+        this.createButton('shield', bx, panelY + 6, btnW, btnH);
+        bx += btnW + gap;
+        this.createButton('capacitor', bx, panelY + 6, btnW, btnH);
 
-        // Keyboard shortcut
+        // Keyboard shortcuts
         if (scene.input.keyboard) {
             scene.input.keyboard.on('keydown-ONE', () => {
                 this.buildSystem.startBuild('relay');
+                this.updateButtonStates();
+            });
+            scene.input.keyboard.on('keydown-TWO', () => {
+                this.buildSystem.startBuild('shield');
+                this.updateButtonStates();
+            });
+            scene.input.keyboard.on('keydown-THREE', () => {
+                this.buildSystem.startBuild('capacitor');
                 this.updateButtonStates();
             });
         }
