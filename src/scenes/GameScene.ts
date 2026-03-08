@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import {
     WORLD_WIDTH, WORLD_HEIGHT,
-    CAMERA_SCROLL_SPEED, CAMERA_EDGE_ZONE,
+    CAMERA_SCROLL_SPEED,
     STAR_LAYER_COUNT, STARS_PER_LAYER, STAR_SIZES, STAR_ALPHAS,
-    COLOUR_WHITE
+    COLOUR_WHITE,
+    CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP
 } from '../utils/Constants';
 import { CommandHub } from '../entities/CommandHub';
 import { ResourceManager } from '../systems/ResourceManager';
@@ -13,7 +14,6 @@ import { HUD } from '../ui/HUD';
 import { BuildMenu } from '../ui/BuildMenu';
 
 export class GameScene extends Phaser.Scene {
-    cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
     commandHub!: CommandHub;
     resourceManager!: ResourceManager;
@@ -52,9 +52,8 @@ export class GameScene extends Phaser.Scene {
         // Camera setup
         this.cameras.main.centerOn(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
 
-        // Keyboard input
+        // Keyboard input (WASD only)
         if (this.input.keyboard) {
-            this.cursors = this.input.keyboard.createCursorKeys();
             this.wasd = {
                 W: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
                 A: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
@@ -62,6 +61,16 @@ export class GameScene extends Phaser.Scene {
                 D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
             };
         }
+
+        // Mouse wheel zoom
+        this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
+            const cam = this.cameras.main;
+            if (dy > 0) {
+                cam.zoom = Math.max(CAMERA_ZOOM_MIN, cam.zoom - CAMERA_ZOOM_STEP);
+            } else if (dy < 0) {
+                cam.zoom = Math.min(CAMERA_ZOOM_MAX, cam.zoom + CAMERA_ZOOM_STEP);
+            }
+        });
     }
 
     update(_time: number, _delta: number): void {
@@ -93,22 +102,15 @@ export class GameScene extends Phaser.Scene {
 
     private handleCameraMovement(): void {
         const cam = this.cameras.main;
-        const pointer = this.input.activePointer;
 
         let dx = 0;
         let dy = 0;
 
-        // Keyboard
-        if (this.cursors?.left.isDown || this.wasd?.A.isDown) dx -= CAMERA_SCROLL_SPEED;
-        if (this.cursors?.right.isDown || this.wasd?.D.isDown) dx += CAMERA_SCROLL_SPEED;
-        if (this.cursors?.up.isDown || this.wasd?.W.isDown) dy -= CAMERA_SCROLL_SPEED;
-        if (this.cursors?.down.isDown || this.wasd?.S.isDown) dy += CAMERA_SCROLL_SPEED;
-
-        // Mouse edge scrolling
-        if (pointer.x < CAMERA_EDGE_ZONE) dx -= CAMERA_SCROLL_SPEED;
-        if (pointer.x > cam.width - CAMERA_EDGE_ZONE) dx += CAMERA_SCROLL_SPEED;
-        if (pointer.y < CAMERA_EDGE_ZONE) dy -= CAMERA_SCROLL_SPEED;
-        if (pointer.y > cam.height - CAMERA_EDGE_ZONE) dy += CAMERA_SCROLL_SPEED;
+        // WASD only
+        if (this.wasd?.A.isDown) dx -= CAMERA_SCROLL_SPEED;
+        if (this.wasd?.D.isDown) dx += CAMERA_SCROLL_SPEED;
+        if (this.wasd?.W.isDown) dy -= CAMERA_SCROLL_SPEED;
+        if (this.wasd?.S.isDown) dy += CAMERA_SCROLL_SPEED;
 
         cam.scrollX += dx;
         cam.scrollY += dy;
