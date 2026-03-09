@@ -11,6 +11,7 @@ import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
 import { BuildSystem } from '../systems/BuildSystem';
 import { CombatSystem } from '../systems/CombatSystem';
+import { MineralManager } from '../systems/MineralManager';
 import { HUD } from '../ui/HUD';
 import { BuildMenu } from '../ui/BuildMenu';
 import { SpawnPanel } from '../ui/SpawnPanel';
@@ -22,6 +23,7 @@ export class GameScene extends Phaser.Scene {
     powerNetwork!: PowerNetwork;
     buildSystem!: BuildSystem;
     combatSystem!: CombatSystem;
+    mineralManager!: MineralManager;
     hud!: HUD;
     buildMenu!: BuildMenu;
     spawnPanel!: SpawnPanel;
@@ -52,6 +54,10 @@ export class GameScene extends Phaser.Scene {
 
         // Combat system
         this.combatSystem = new CombatSystem(this, this.resourceManager, this.powerNetwork, this.buildSystem);
+
+        // Mineral pickup manager
+        this.mineralManager = new MineralManager(this, this.powerNetwork, this.resourceManager);
+        this.combatSystem.setMineralManager(this.mineralManager);
 
         // Cross-wire: build system needs combat system for blaster turrets
         this.buildSystem.setCombatSystem(this.combatSystem);
@@ -117,6 +123,7 @@ export class GameScene extends Phaser.Scene {
         this.handleCameraMovement();
         this.buildSystem.update();
         this.combatSystem.update(delta);
+        this.mineralManager.update(delta);
         this.powerNetwork.update(delta);
         this.hud.update();
         this.spawnPanel.update();

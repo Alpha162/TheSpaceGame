@@ -56,6 +56,10 @@ export class PowerNetwork {
         return this.bfsDistances;
     }
 
+    getNeighbors(node: GameNode): Set<GameNode> | undefined {
+        return this.adjacency.get(node);
+    }
+
     // Power economy getters for HUD
     get totalGeneration(): number { return this._totalGeneration; }
     get totalDemand(): number { return this._totalDemand; }

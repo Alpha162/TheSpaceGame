@@ -7,6 +7,7 @@ import { Blaster } from '../entities/turrets/Blaster';
 import { ResourceManager } from './ResourceManager';
 import { PowerNetwork } from './PowerNetwork';
 import { BuildSystem } from './BuildSystem';
+import type { MineralManager } from './MineralManager';
 import {
     WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD, ENEMY_ATTACK_RANGE,
     ENEMY_PROJECTILE_SPEED, ENEMY_THREAT_WEIGHT,
@@ -32,6 +33,7 @@ export class CombatSystem {
     private buildSystem: BuildSystem;
     private enemies: Enemy[] = [];
     private projectiles: Projectile[] = [];
+    private mineralManager: MineralManager | null = null;
 
     constructor(
         scene: Phaser.Scene,
@@ -43,6 +45,10 @@ export class CombatSystem {
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
         this.buildSystem = buildSystem;
+    }
+
+    setMineralManager(mm: MineralManager): void {
+        this.mineralManager = mm;
     }
 
     getEnemies(): Enemy[] {
@@ -280,7 +286,11 @@ export class CombatSystem {
                     if (dist <= enemy.radius + 3) {
                         const died = enemy.takeDamage(p.damage);
                         if (died) {
-                            this.resourceManager.earn(ENEMY_MINERAL_REWARD);
+                            if (this.mineralManager) {
+                                this.mineralManager.spawnPickup(enemy.x, enemy.y, ENEMY_MINERAL_REWARD);
+                            } else {
+                                this.resourceManager.earn(ENEMY_MINERAL_REWARD);
+                            }
                         }
                         hit = true;
                         break;

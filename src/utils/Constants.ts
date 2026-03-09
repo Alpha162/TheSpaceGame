@@ -141,6 +141,14 @@ export const ENEMY_MINERAL_REWARD = 10;   // minerals dropped on death
 export const ENEMY_PROJECTILE_SPEED = 180; // world units per second
 export const ENEMY_THREAT_WEIGHT = 0.6;   // weight for preferring threat targets (0=nearest only, 1=threats only)
 
+// Mineral pickup constants
+export const MINERAL_PICKUP_TRACTOR_RANGE = 120;  // px — nodes pull pickups within this range
+export const MINERAL_PICKUP_TRACTOR_SPEED = 0.15;  // world units per ms toward node
+export const MINERAL_PICKUP_TRANSIT_SPEED = 0.2;   // world units per ms along power links
+export const MINERAL_PICKUP_SCATTER_SPEED = 0.08;  // initial scatter velocity (units/ms)
+export const MINERAL_PICKUP_FRICTION = 0.97;       // velocity damping per frame
+export const MINERAL_PICKUP_LIFETIME = 15000;      // ms before uncollected pickup fades
+
 // Node repair constants
 export const NODE_REPAIR_DELAY_MS = 3000;    // ms after last damage before repair starts
 export const NODE_REPAIR_RATE = 0.02;        // health per ms (= 20 HP/sec)
