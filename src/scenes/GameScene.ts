@@ -42,7 +42,17 @@ export class GameScene extends Phaser.Scene {
     private pauseOverlay!: Phaser.GameObjects.Graphics;
     private pauseText!: Phaser.GameObjects.Text;
     private pauseButton!: Phaser.GameObjects.Text;
+    private pauseButtonBg!: Phaser.GameObjects.Graphics;
+    private pauseZone!: Phaser.GameObjects.Zone;
     private uiCam!: Phaser.Cameras.Scene2D.Camera;
+    private readonly onScaleResize: (size: Phaser.Structs.Size) => void = (size: Phaser.Structs.Size) => {
+        this.handleResize(size.width, size.height);
+    };
+    private readonly onAddedToScene: (child: Phaser.GameObjects.GameObject) => void = (child: Phaser.GameObjects.GameObject) => {
+        if (!this.uiObjects.has(child)) {
+            this.uiCam.ignore(child);
+        }
+    };
 
     constructor() {
         super({ key: 'GameScene' });
@@ -111,11 +121,7 @@ export class GameScene extends Phaser.Scene {
             }
         });
         // Auto-ignore new world objects on UI camera
-        this.events.on('addedtoscene', (child: Phaser.GameObjects.GameObject) => {
-            if (!this.uiObjects.has(child)) {
-                this.uiCam.ignore(child);
-            }
-        });
+        this.events.on('addedtoscene', this.onAddedToScene, this);
 
         // Keyboard input (WASD only)
         if (this.input.keyboard) {
@@ -128,69 +134,22 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Mouse wheel zoom toward pointer position
-        this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
-            const cam = this.cameras.main;
-            const oldZoom = cam.zoom;
-            let newZoom: number;
+        this.input.on('wheel', this.onWheel, this);
 
-            if (dy > 0) {
-                newZoom = Math.max(CAMERA_ZOOM_MIN, oldZoom - CAMERA_ZOOM_STEP);
-            } else if (dy < 0) {
-                newZoom = Math.min(CAMERA_ZOOM_MAX, oldZoom + CAMERA_ZOOM_STEP);
-            } else {
-                return;
-            }
-
-            // Zoom toward the world point under the mouse
-            const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-            cam.zoom = newZoom;
-
-            // After zoom, adjust scroll so worldPoint stays under the mouse
-            const newWorldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-            cam.scrollX += worldPoint.x - newWorldPoint.x;
-            cam.scrollY += worldPoint.y - newWorldPoint.y;
-        });
-
-        // Right-mouse drag to pan camera (middle button intentionally unused)
-        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (pointer.rightButtonDown()) {
-                // Right-click is reserved for build cancel while a build type is active.
-                if (this.buildSystem.isBuilding()) {
-                    return;
-                }
-
-                // If a right-click just cancelled build mode, don't also begin camera drag.
-                if (this.buildSystem.consumeRightDragSuppression()) {
-                    return;
-                }
-                this.startDrag(pointer, 'right');
-            }
-        });
-        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-            if (this.isDragging) {
-                const cam = this.cameras.main;
-                const dx = (this.dragStartX - pointer.x) / cam.zoom;
-                const dy = (this.dragStartY - pointer.y) / cam.zoom;
-                cam.scrollX = this.dragCamStartX + dx;
-                cam.scrollY = this.dragCamStartY + dy;
-            }
-        });
-        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-            if (!this.isDragging) return;
-
-            if (this.dragButton === 'right' && !pointer.rightButtonDown()) {
-                this.stopDrag();
-            }
-        });
+        // Middle-mouse drag to pan camera
+        this.input.on('pointerdown', this.onPointerDown, this);
+        this.input.on('pointermove', this.onPointerMove, this);
+        this.input.on('pointerup', this.onPointerUp, this);
 
         // Pause button (top-right)
         this.createPauseButton();
 
+        this.scale.on('resize', this.onScaleResize, this);
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
+
         // P key to toggle pause
         if (this.input.keyboard) {
-            this.input.keyboard.on('keydown-P', () => {
-                this.togglePause();
-            });
+            this.input.keyboard.on('keydown-P', this.onKeyDownP, this);
         }
     }
 
@@ -209,36 +168,31 @@ export class GameScene extends Phaser.Scene {
     }
 
     private createPauseButton(): void {
-        const viewW = this.scale.width;
         const s = (window.devicePixelRatio || 1);
 
         // Pause button
-        const btnBg = this.add.graphics();
-        btnBg.setScrollFactor(0).setDepth(200);
-        btnBg.fillStyle(COLOUR_PANEL, 0.85);
-        btnBg.fillRoundedRect(viewW - 80 * s, 4 * s, 76 * s, 28 * s, 4 * s);
-        btnBg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
-        btnBg.strokeRoundedRect(viewW - 80 * s, 4 * s, 76 * s, 28 * s, 4 * s);
+        this.pauseButtonBg = this.add.graphics();
+        this.pauseButtonBg.setScrollFactor(0).setDepth(200);
 
-        this.pauseButton = this.add.text(viewW - 42 * s, 18 * s, 'PAUSE', {
+        this.pauseButton = this.add.text(0, 0, 'PAUSE', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(11 * s)}px`,
             color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
 
-        const pauseZone = this.add.zone(viewW - 42 * s, 18 * s, 76 * s, 28 * s)
+        this.pauseZone = this.add.zone(0, 0, 0, 0)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
 
-        pauseZone.on('pointerdown', () => this.togglePause());
-        pauseZone.on('pointerover', () => this.pauseButton.setColor('#00e5ff'));
-        pauseZone.on('pointerout', () => this.pauseButton.setColor('#ffffff'));
+        this.pauseZone.on('pointerdown', () => this.togglePause());
+        this.pauseZone.on('pointerover', () => this.pauseButton.setColor('#00e5ff'));
+        this.pauseZone.on('pointerout', () => this.pauseButton.setColor('#ffffff'));
 
         // Pause overlay (hidden by default)
         this.pauseOverlay = this.add.graphics();
         this.pauseOverlay.setScrollFactor(0).setDepth(300);
         this.pauseOverlay.setVisible(false);
 
-        this.pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'PAUSED', {
+        this.pauseText = this.add.text(0, 0, 'PAUSED', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(48 * s)}px`,
             color: '#00e5ff',
@@ -246,15 +200,17 @@ export class GameScene extends Phaser.Scene {
         }).setScrollFactor(0).setDepth(301).setOrigin(0.5).setVisible(false);
 
         // Register pause UI objects with the camera system
-        const pauseUiObjects = [btnBg, this.pauseButton, pauseZone, this.pauseOverlay, this.pauseText];
+        const pauseUiObjects = [this.pauseButtonBg, this.pauseButton, this.pauseZone, this.pauseOverlay, this.pauseText];
         for (const obj of pauseUiObjects) {
             this.uiObjects.add(obj);
             this.cameras.main.ignore(obj);
-            // The addedtoscene handler already told uiCam to ignore these
-            // (they weren't in uiObjects yet when added), so undo that
         }
-        // Re-add to uiCam visibility by removing the ignore
-        // Phaser doesn't have an "un-ignore" — simplest fix: recreate uiCam
+
+        this.rebuildUiCamera();
+        this.handleResize(this.scale.width, this.scale.height);
+    }
+
+    private rebuildUiCamera(): void {
         this.cameras.remove(this.uiCam);
         this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
         this.uiCam.setScroll(0, 0);
@@ -265,13 +221,45 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
+    private redrawPauseOverlay(width: number, height: number): void {
+        this.pauseOverlay.clear();
+        this.pauseOverlay.fillStyle(0x000000, 0.5);
+        this.pauseOverlay.fillRect(0, 0, width, height);
+    }
+
+    private handleResize(width: number, height: number): void {
+        this.uiCam.setViewport(0, 0, width, height);
+
+        this.hud.relayout(width, height);
+        this.buildMenu.relayout(width, height);
+        this.spawnPanel.relayout(width, height);
+
+        const s = (window.devicePixelRatio || 1);
+        const btnX = width - 80 * s;
+        const btnY = 4 * s;
+        const btnW = 76 * s;
+        const btnH = 28 * s;
+
+        this.pauseButtonBg.clear();
+        this.pauseButtonBg.fillStyle(COLOUR_PANEL, 0.85);
+        this.pauseButtonBg.fillRoundedRect(btnX, btnY, btnW, btnH, 4 * s);
+        this.pauseButtonBg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        this.pauseButtonBg.strokeRoundedRect(btnX, btnY, btnW, btnH, 4 * s);
+
+        this.pauseButton.setPosition(btnX + btnW / 2, btnY + btnH / 2);
+        this.pauseZone.setPosition(btnX + btnW / 2, btnY + btnH / 2).setSize(btnW, btnH);
+        this.pauseText.setPosition(width / 2, height / 2);
+
+        if (this.isPaused) {
+            this.redrawPauseOverlay(width, height);
+        }
+    }
+
     private togglePause(): void {
         this.isPaused = !this.isPaused;
 
         if (this.isPaused) {
-            this.pauseOverlay.clear();
-            this.pauseOverlay.fillStyle(0x000000, 0.5);
-            this.pauseOverlay.fillRect(0, 0, this.scale.width, this.scale.height);
+            this.redrawPauseOverlay(this.scale.width, this.scale.height);
             this.pauseOverlay.setVisible(true);
             this.pauseText.setVisible(true);
             this.pauseButton.setText('RESUME');
@@ -280,6 +268,25 @@ export class GameScene extends Phaser.Scene {
             this.pauseText.setVisible(false);
             this.pauseButton.setText('PAUSE');
         }
+    }
+
+
+    private handleShutdown(): void {
+        this.scale.off('resize', this.onScaleResize, this);
+        this.events.off('addedtoscene', this.onAddedToScene, this);
+
+        if (this.input.keyboard) {
+            this.input.keyboard.off('keydown-P');
+        }
+
+        this.input.off('wheel');
+        this.input.off('pointerdown');
+        this.input.off('pointermove');
+        this.input.off('pointerup');
+
+        this.hud.destroy();
+        this.buildMenu.destroy();
+        this.spawnPanel.destroy();
     }
 
     update(_time: number, delta: number): void {
