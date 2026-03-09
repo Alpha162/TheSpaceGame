@@ -11,6 +11,7 @@ import type { Shield } from './defence/Shield';
 import type { IClusterShield, ShieldClusterManager } from '../systems/ShieldClusterManager';
 
 export class CommandHub extends GameNode implements IClusterShield {
+    readonly isHub = true;
     powerGeneration: number;
     private glowTween: Phaser.Tweens.Tween | null = null;
     private glowAlpha = 0.6;

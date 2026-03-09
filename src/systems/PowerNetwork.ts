@@ -39,6 +39,7 @@ export class PowerNetwork {
     setHub(hub: CommandHub): void {
         this.hub = hub;
         this.scene = hub.scene;
+        this.shieldClusterManager.init(hub.scene);
         this.adjacency.set(hub, new Set());
         this.updateConnectivity();
     }
@@ -593,6 +594,7 @@ export class PowerNetwork {
         }
         this.shieldClusterManager.rebuild(clusterMembers);
         this.shieldClusterManager.updateSyncPhase(delta);
+        this.shieldClusterManager.renderClusters();
         for (const shield of activeShields) {
             shield.clusterManager = this.shieldClusterManager;
         }
