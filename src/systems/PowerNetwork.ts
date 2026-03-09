@@ -582,9 +582,8 @@ export class PowerNetwork {
     private powerTick(): void {
         if (!this.hub) return;
 
-        // Let nodes do per-tick behaviour
+        // Let nodes do per-tick behaviour (including hub for self-repair)
         for (const node of this.adjacency.keys()) {
-            if (node === this.hub) continue;
             if (node.nodeState === 'online') {
                 node.onPowerTick(POWER_TICK_INTERVAL_MS);
             }
