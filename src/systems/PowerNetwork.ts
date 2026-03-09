@@ -79,44 +79,15 @@ export class PowerNetwork {
         if (this.adjacency.has(node)) return [];
         this.adjacency.set(node, new Set());
 
+        // Auto-connect to nearby nodes that pass connection rules
         const newLinks: PowerLink[] = [];
-        const nodeIsAnchor = this.isAnchorNode(node);
-
-        if (nodeIsAnchor) {
-            // Anchor nodes (relays, hub) connect to everything valid in range
-            for (const existing of this.adjacency.keys()) {
-                if (existing === node) continue;
-                if (this.canLink(node, existing)) {
-                    this.addLink(node, existing);
-                    if (this.scene) {
-                        const link = new PowerLink(this.scene, node, existing);
-                        link.isBackbone = this.isAnchorNode(existing);
-                        this.links.push(link);
-                        newLinks.push(link);
-                    }
-                }
-            }
-        } else {
-            // End nodes connect to the single closest anchor with capacity
-            let bestAnchor: GameNode | null = null;
-            let bestDist = Infinity;
-            for (const existing of this.adjacency.keys()) {
-                if (existing === node) continue;
-                if (!this.isAnchorNode(existing)) continue;
-                const dist = distanceBetween(node.x, node.y, existing.x, existing.y);
-                if (dist > MAX_POWER_LINK_LENGTH) continue;
-                const capacity = this.getAnchorCapacity(existing);
-                if (this.getNonRelayConnectionCount(existing) >= capacity) continue;
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestAnchor = existing;
-                }
-            }
-            if (bestAnchor) {
-                this.addLink(node, bestAnchor);
+        for (const existing of this.adjacency.keys()) {
+            if (existing === node) continue;
+            if (this.canLink(node, existing)) {
+                this.addLink(node, existing);
                 if (this.scene) {
-                    const link = new PowerLink(this.scene, node, bestAnchor);
-                    link.isBackbone = false;
+                    const link = new PowerLink(this.scene, node, existing);
+                    link.isBackbone = this.isAnchorNode(node) && this.isAnchorNode(existing);
                     this.links.push(link);
                     newLinks.push(link);
                 }

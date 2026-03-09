@@ -349,40 +349,32 @@ export class BuildSystem {
         // Draw potential connections (only to valid targets per relay rules)
         const allNodes = this.powerNetwork.getAllNodes();
         const isPlacingRelay = this.activeBuildType === 'relay';
+        for (const node of allNodes) {
+            const dist = distanceBetween(wx, wy, node.x, node.y);
+            if (dist > MAX_POWER_LINK_LENGTH) continue;
 
-        if (isPlacingRelay) {
-            // Relays show connections to everything in range
-            for (const node of allNodes) {
-                const dist = distanceBetween(wx, wy, node.x, node.y);
-                if (dist > MAX_POWER_LINK_LENGTH) continue;
+            // Check if this connection would be valid
+            let validLink = false;
+            if (isPlacingRelay) {
+                validLink = true; // relays connect to anything
+            } else if (this.powerNetwork.isAnchorNode(node)) {
+                const capacity = node instanceof CommandHub ? HUB_MAX_CONNECTIONS : RELAY_MAX_CONNECTIONS;
+                validLink = this.powerNetwork.getNonRelayConnectionCount(node) < capacity;
+            }
+
+            if (validLink) {
                 const linkColour = this.isValidPlacement ? COLOUR_CYAN : COLOUR_RED;
                 this.rangeGraphics.lineStyle(1, linkColour, 0.3);
                 this.rangeGraphics.beginPath();
                 this.rangeGraphics.moveTo(wx, wy);
                 this.rangeGraphics.lineTo(node.x, node.y);
                 this.rangeGraphics.strokePath();
-            }
-        } else {
-            // End nodes show only the single closest valid anchor
-            let bestAnchor: { x: number; y: number } | null = null;
-            let bestDist = Infinity;
-            for (const node of allNodes) {
-                if (!this.powerNetwork.isAnchorNode(node)) continue;
-                const dist = distanceBetween(wx, wy, node.x, node.y);
-                if (dist > MAX_POWER_LINK_LENGTH) continue;
-                const capacity = node instanceof CommandHub ? HUB_MAX_CONNECTIONS : RELAY_MAX_CONNECTIONS;
-                const hasCapacity = this.powerNetwork.getNonRelayConnectionCount(node) < capacity;
-                if (hasCapacity && dist < bestDist) {
-                    bestDist = dist;
-                    bestAnchor = node;
-                }
-            }
-            if (bestAnchor) {
-                const linkColour = this.isValidPlacement ? COLOUR_CYAN : COLOUR_RED;
-                this.rangeGraphics.lineStyle(1, linkColour, 0.3);
+            } else if (this.powerNetwork.isAnchorNode(node)) {
+                // Show full relay connections in dim red
+                this.rangeGraphics.lineStyle(1, COLOUR_RED, 0.15);
                 this.rangeGraphics.beginPath();
                 this.rangeGraphics.moveTo(wx, wy);
-                this.rangeGraphics.lineTo(bestAnchor.x, bestAnchor.y);
+                this.rangeGraphics.lineTo(node.x, node.y);
                 this.rangeGraphics.strokePath();
             }
         }
