@@ -230,21 +230,10 @@ export class CombatSystem {
                 }
             }
 
-            // Attack logic — enemies fire projectiles
-            if (enemy.canAttack() && nearestNode) {
-                if (shieldTarget && (enemy.blockedByShield || enemy.moveClamp < 5)) {
-                    // Shoot at shield
-                    const damage = enemy.performAttack();
-                    shieldTarget.absorbDamage(damage);
-                } else if (hitHubShield && (enemy.blockedByShield || enemy.moveClamp < 5)) {
-                    // Shoot at hub shield
-                    const damage = enemy.performAttack();
-                    hub.absorbShieldDamage(damage);
-                } else if (!shieldTarget && !hitHubShield && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
-                    // In firing range — launch a projectile
-                    const damage = enemy.performAttack();
-                    this.fireEnemyProjectile(enemy.x, enemy.y, nearestNode, damage);
-                }
+            // Attack logic — enemies fire projectiles at range; shields intercept in flight
+            if (enemy.canAttack() && nearestNode && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
+                const damage = enemy.performAttack();
+                this.fireEnemyProjectile(enemy.x, enemy.y, nearestNode, damage);
             }
         }
 

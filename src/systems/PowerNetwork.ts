@@ -282,7 +282,8 @@ export class PowerNetwork {
         for (const node of visited) {
             if (node === this.hub) continue;
             const isPassiveConduit = node instanceof PowerRelay && node.isFullyConstructed();
-            if (!isPassiveConduit) {
+            const isIdleNode = node.nodeState === 'online' && node.getCurrentPowerDraw() === 0;
+            if (!isPassiveConduit && !isIdleNode) {
                 let current: GameNode | undefined = node;
                 while (current && !powerCarrying.has(current)) {
                     powerCarrying.add(current);
