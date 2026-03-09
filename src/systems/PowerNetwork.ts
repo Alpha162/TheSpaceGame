@@ -7,12 +7,19 @@ import { PowerLink } from '../entities/PowerLink';
 import { MAX_POWER_LINK_LENGTH, POWER_TICK_INTERVAL_MS, PowerPriority } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
+interface IslandSubNetwork {
+    nodes: Set<GameNode>;
+    capacitors: Capacitor[];
+    distances: Map<GameNode, number>;
+}
+
 export class PowerNetwork {
     private adjacency: Map<GameNode, Set<GameNode>> = new Map();
     private links: PowerLink[] = [];
     private hub: CommandHub | null = null;
     private bfsDistances: Map<GameNode, number> = new Map();
     private scene: Phaser.Scene | null = null;
+    private islandSubNetworks: IslandSubNetwork[] = [];
 
     // Tick-based power economy state
     private tickAccumulator = 0;
@@ -104,12 +111,12 @@ export class PowerNetwork {
     updateConnectivity(): void {
         if (!this.hub) return;
 
-        // BFS from hub — traverse through fully constructed nodes, and reach
+        // Phase 1: BFS from hub — traverse through fully constructed nodes, and reach
         // (but don't traverse through) constructing nodes so they can draw power
         this.bfsDistances.clear();
-        const visited = new Set<GameNode>();
+        const hubVisited = new Set<GameNode>();
         const queue: Array<{ node: GameNode; distance: number }> = [{ node: this.hub, distance: 0 }];
-        visited.add(this.hub);
+        hubVisited.add(this.hub);
         this.bfsDistances.set(this.hub, 0);
 
         while (queue.length > 0) {
@@ -117,8 +124,8 @@ export class PowerNetwork {
             const neighbors = this.adjacency.get(node);
             if (neighbors) {
                 for (const neighbor of neighbors) {
-                    if (!visited.has(neighbor)) {
-                        visited.add(neighbor);
+                    if (!hubVisited.has(neighbor)) {
+                        hubVisited.add(neighbor);
                         this.bfsDistances.set(neighbor, distance + 1);
                         if (neighbor.isFullyConstructed()) {
                             queue.push({ node: neighbor, distance: distance + 1 });
@@ -128,14 +135,88 @@ export class PowerNetwork {
             }
         }
 
-        // Update node states (connectivity only — power distribution happens in tick)
+        // Phase 2: Find disconnected sub-networks with charged capacitors
+        // These "island" networks can sustain themselves from stored energy
+        this.islandSubNetworks = [];
+        const allVisited = new Set<GameNode>(hubVisited);
+
+        for (const node of this.adjacency.keys()) {
+            if (allVisited.has(node) || !node.isFullyConstructed()) continue;
+
+            // BFS to find this disconnected component
+            const component = new Set<GameNode>();
+            const componentQueue: GameNode[] = [node];
+            component.add(node);
+            allVisited.add(node);
+            const componentCapacitors: Capacitor[] = [];
+
+            while (componentQueue.length > 0) {
+                const current = componentQueue.shift()!;
+                if (current instanceof Capacitor && current.currentStorage > 0) {
+                    componentCapacitors.push(current);
+                }
+                const neighbors = this.adjacency.get(current);
+                if (neighbors) {
+                    for (const neighbor of neighbors) {
+                        if (!allVisited.has(neighbor) && neighbor.isFullyConstructed()) {
+                            allVisited.add(neighbor);
+                            component.add(neighbor);
+                            componentQueue.push(neighbor);
+                        }
+                    }
+                }
+            }
+
+            // Only keep this island if it has charged capacitors
+            if (componentCapacitors.length > 0) {
+                // BFS from capacitors to assign distances within the island
+                const islandDistances = new Map<GameNode, number>();
+                const islandQueue: Array<{ node: GameNode; distance: number }> = [];
+                for (const cap of componentCapacitors) {
+                    islandDistances.set(cap, 0);
+                    islandQueue.push({ node: cap, distance: 0 });
+                }
+                while (islandQueue.length > 0) {
+                    const { node: n, distance: d } = islandQueue.shift()!;
+                    const neighbors = this.adjacency.get(n);
+                    if (neighbors) {
+                        for (const neighbor of neighbors) {
+                            if (component.has(neighbor) && !islandDistances.has(neighbor)) {
+                                islandDistances.set(neighbor, d + 1);
+                                islandQueue.push({ node: neighbor, distance: d + 1 });
+                            }
+                        }
+                    }
+                }
+
+                // Merge island distances into main bfsDistances (offset to distinguish from hub)
+                for (const [n, d] of islandDistances) {
+                    this.bfsDistances.set(n, d);
+                }
+
+                this.islandSubNetworks.push({
+                    nodes: component,
+                    capacitors: componentCapacitors,
+                    distances: islandDistances
+                });
+            }
+        }
+
+        // Collect all powered nodes (hub-connected + island-powered)
+        const allPowered = new Set<GameNode>(hubVisited);
+        for (const island of this.islandSubNetworks) {
+            for (const n of island.nodes) {
+                allPowered.add(n);
+            }
+        }
+
+        // Update node states
         for (const node of this.adjacency.keys()) {
             if (node === this.hub) continue;
             if (!node.isFullyConstructed()) {
                 node.setNodeState('constructing');
-                node.constructionPowered = visited.has(node);
-            } else if (visited.has(node)) {
-                // Mark as online; power distribution will set brownout if needed
+                node.constructionPowered = hubVisited.has(node);
+            } else if (allPowered.has(node)) {
                 node.setNodeState('online');
             } else {
                 node.setNodeState('offline');
@@ -146,7 +227,7 @@ export class PowerNetwork {
         this.runPowerDistribution();
 
         // Update link visuals
-        this.updateLinkVisuals(visited);
+        this.updateLinkVisuals(allPowered);
     }
 
     private updateLinkVisuals(visited: Set<GameNode>): void {
@@ -172,7 +253,30 @@ export class PowerNetwork {
             }
         }
 
-        // Trace consumers to hub for power-carrying paths
+        // Also build parent maps for island sub-networks (BFS from capacitors)
+        for (const island of this.islandSubNetworks) {
+            const islandVisited = new Set<GameNode>();
+            const islandQueue: Array<{ node: GameNode; distance: number }> = [];
+            for (const cap of island.capacitors) {
+                islandVisited.add(cap);
+                islandQueue.push({ node: cap, distance: 0 });
+            }
+            while (islandQueue.length > 0) {
+                const { node, distance } = islandQueue.shift()!;
+                const neighbors = this.adjacency.get(node);
+                if (neighbors) {
+                    for (const neighbor of neighbors) {
+                        if (!islandVisited.has(neighbor) && island.nodes.has(neighbor)) {
+                            islandVisited.add(neighbor);
+                            parent.set(neighbor, node);
+                            islandQueue.push({ node: neighbor, distance: distance + 1 });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Trace consumers to source for power-carrying paths
         const powerCarrying = new Set<GameNode>();
         for (const node of visited) {
             if (node === this.hub) continue;
@@ -186,6 +290,15 @@ export class PowerNetwork {
             }
         }
 
+        // Build set of island capacitors (they act as power sources like the hub)
+        const powerSources = new Set<GameNode>();
+        powerSources.add(this.hub);
+        for (const island of this.islandSubNetworks) {
+            for (const cap of island.capacitors) {
+                powerSources.add(cap);
+            }
+        }
+
         // Update link visuals and flow direction
         // Only show pulses on BFS tree edges (parent-child) that carry power
         for (const link of this.links) {
@@ -194,10 +307,9 @@ export class PowerNetwork {
 
             const a = link.getNodeA();
             const b = link.getNodeB();
-            // Check if this link is a BFS tree edge (one node is the parent of the other)
             const isTreeEdge = parent.get(a) === b || parent.get(b) === a;
-            const aCarries = powerCarrying.has(a) || a === this.hub;
-            const bCarries = powerCarrying.has(b) || b === this.hub;
+            const aCarries = powerCarrying.has(a) || powerSources.has(a);
+            const bCarries = powerCarrying.has(b) || powerSources.has(b);
             link.setShowPulses(isTreeEdge && aCarries && bCarries);
         }
     }
@@ -209,24 +321,32 @@ export class PowerNetwork {
      * 3. Within each tier, if budget insufficient, brown out furthest nodes first
      * 4. Capacitors discharge to fill shortfalls in higher tiers
      * 5. Excess generation charges capacitors
+     * 6. Island sub-networks powered entirely by capacitor discharge
      */
     private runPowerDistribution(): void {
         if (!this.hub) return;
+
+        // Build set of island nodes for filtering
+        const islandNodeSet = new Set<GameNode>();
+        for (const island of this.islandSubNetworks) {
+            for (const n of island.nodes) islandNodeSet.add(n);
+        }
 
         // Total generation available this tick
         this._totalGeneration = this.hub.powerGeneration;
         let availablePower = this._totalGeneration;
 
-        // Gather all connected online/brownout nodes grouped by priority
+        // Gather hub-connected online/brownout nodes grouped by priority
         const tiers: Map<PowerPriority, Array<{ node: GameNode; distance: number; draw: number }>> = new Map();
-        const capacitors: Capacitor[] = [];
+        const hubCapacitors: Capacitor[] = [];
 
         for (const [node, distance] of this.bfsDistances) {
             if (node === this.hub) continue;
+            if (islandNodeSet.has(node)) continue; // handled separately
             if (node.nodeState === 'offline' || node.nodeState === 'constructing') continue;
 
             if (node instanceof Capacitor) {
-                capacitors.push(node);
+                hubCapacitors.push(node);
             }
 
             const priority = node.powerPriority;
@@ -238,7 +358,7 @@ export class PowerNetwork {
             });
         }
 
-        // Track total demand
+        // Track total demand (hub + islands)
         this._totalDemand = 0;
         for (const tier of tiers.values()) {
             for (const entry of tier) {
@@ -246,16 +366,16 @@ export class PowerNetwork {
             }
         }
 
-        // Update capacitor stats
+        // Update capacitor stats (all capacitors across hub and islands)
         this._capacitorStored = 0;
         this._capacitorMax = 0;
         this._capacitorDischarging = 0;
-        for (const cap of capacitors) {
+        for (const cap of hubCapacitors) {
             this._capacitorStored += cap.currentStorage;
             this._capacitorMax += cap.maxStorage;
         }
 
-        // Distribute power tier by tier (CRITICAL first, then HIGH, NORMAL, LOW)
+        // Distribute hub power tier by tier (CRITICAL first, then HIGH, NORMAL, LOW)
         const priorityOrder = [
             PowerPriority.CRITICAL,
             PowerPriority.HIGH,
@@ -267,28 +387,23 @@ export class PowerNetwork {
             const tier = tiers.get(priority);
             if (!tier || tier.length === 0) continue;
 
-            // Calculate total demand for this tier
             const tierDemand = tier.reduce((sum, e) => sum + e.draw, 0);
 
             if (tierDemand <= availablePower) {
-                // Enough power — all nodes in this tier are online
                 for (const entry of tier) {
                     if (entry.node.nodeState === 'brownout') {
                         entry.node.setNodeState('online');
                     }
-                    // Charge capacitors with allocated power
                     if (entry.node instanceof Capacitor && entry.draw > 0) {
                         entry.node.charge(entry.draw);
                     }
                 }
                 availablePower -= tierDemand;
             } else {
-                // Not enough from generation alone — try discharging capacitors
-                // (but only for tiers above LOW, since capacitors ARE low tier)
                 let shortfall = tierDemand - availablePower;
 
-                if (priority !== PowerPriority.LOW && capacitors.length > 0) {
-                    for (const cap of capacitors) {
+                if (priority !== PowerPriority.LOW && hubCapacitors.length > 0) {
+                    for (const cap of hubCapacitors) {
                         if (shortfall <= 0) break;
                         const discharged = cap.discharge(shortfall);
                         shortfall -= discharged;
@@ -299,16 +414,13 @@ export class PowerNetwork {
                 const effectivePower = tierDemand - shortfall;
 
                 if (effectivePower >= tierDemand) {
-                    // Capacitors filled the gap — all online
                     for (const entry of tier) {
                         if (entry.node.nodeState === 'brownout') {
                             entry.node.setNodeState('online');
                         }
                     }
                 } else {
-                    // Still not enough — brown out furthest nodes first within this tier
                     tier.sort((a, b) => b.distance - a.distance);
-
                     let remaining = tierDemand;
                     for (const entry of tier) {
                         if (remaining <= effectivePower) {
@@ -320,14 +432,97 @@ export class PowerNetwork {
                     }
                 }
 
-                availablePower = 0; // all generation consumed
+                availablePower = 0;
             }
         }
 
-        // Update capacitor stored totals after discharge
+        // Phase 2: Distribute power within island sub-networks using capacitor discharge
+        for (const island of this.islandSubNetworks) {
+            // Gather island nodes by priority
+            const islandTiers: Map<PowerPriority, Array<{ node: GameNode; distance: number; draw: number }>> = new Map();
+            let islandDemand = 0;
+
+            for (const node of island.nodes) {
+                if (node.nodeState === 'offline' || node.nodeState === 'constructing') continue;
+                if (node instanceof Capacitor) continue; // capacitors power the island, don't draw
+
+                const distance = island.distances.get(node) ?? 0;
+                const draw = node.getCurrentPowerDraw();
+                islandDemand += draw;
+
+                const priority = node.powerPriority;
+                if (!islandTiers.has(priority)) islandTiers.set(priority, []);
+                islandTiers.get(priority)!.push({ node, distance, draw });
+            }
+
+            this._totalDemand += islandDemand;
+
+            // Discharge capacitors to meet island demand
+            let islandPower = 0;
+            for (const cap of island.capacitors) {
+                this._capacitorStored += cap.currentStorage;
+                this._capacitorMax += cap.maxStorage;
+
+                const discharged = cap.discharge(islandDemand - islandPower);
+                islandPower += discharged;
+                this._capacitorDischarging += discharged;
+                if (islandPower >= islandDemand) break;
+            }
+
+            // Distribute island power tier by tier
+            let islandAvailable = islandPower;
+            for (const priority of priorityOrder) {
+                const tier = islandTiers.get(priority);
+                if (!tier || tier.length === 0) continue;
+
+                const tierDemand = tier.reduce((sum, e) => sum + e.draw, 0);
+
+                if (tierDemand <= islandAvailable) {
+                    for (const entry of tier) {
+                        if (entry.node.nodeState === 'brownout') {
+                            entry.node.setNodeState('online');
+                        }
+                    }
+                    islandAvailable -= tierDemand;
+                } else {
+                    // Not enough — brown out furthest first
+                    tier.sort((a, b) => b.distance - a.distance);
+                    let remaining = tierDemand;
+                    for (const entry of tier) {
+                        if (remaining <= islandAvailable) {
+                            entry.node.setNodeState('online');
+                        } else {
+                            entry.node.setNodeState('brownout');
+                            remaining -= entry.draw;
+                        }
+                    }
+                    islandAvailable = 0;
+                }
+            }
+
+            // If no power available at all, island nodes go offline
+            if (islandPower <= 0) {
+                for (const node of island.nodes) {
+                    if (node.nodeState !== 'constructing') {
+                        node.setNodeState('offline');
+                    }
+                }
+            }
+        }
+
+        // Update capacitor stored totals after all discharge
         this._capacitorStored = 0;
-        for (const cap of capacitors) {
-            this._capacitorStored += cap.currentStorage;
+        for (const node of this.adjacency.keys()) {
+            if (node instanceof Capacitor) {
+                this._capacitorStored += node.currentStorage;
+                // Ensure capacitorMax includes all capacitors
+            }
+        }
+        this._capacitorMax = 0;
+        for (const node of this.adjacency.keys()) {
+            if (node instanceof Capacitor && node.isFullyConstructed()) {
+                this._capacitorMax += node.maxStorage;
+            }
         }
     }
 
@@ -381,14 +576,8 @@ export class PowerNetwork {
             }
         }
 
-        // Recalculate power distribution
-        this.runPowerDistribution();
-
-        // Re-gather visited for link visuals
-        const visited = new Set<GameNode>();
-        for (const node of this.bfsDistances.keys()) {
-            visited.add(node);
-        }
-        this.updateLinkVisuals(visited);
+        // Recalculate power distribution (also re-evaluates island sub-networks
+        // since capacitor charge changes each tick)
+        this.updateConnectivity();
     }
 }

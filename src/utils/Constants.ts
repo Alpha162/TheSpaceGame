@@ -58,6 +58,10 @@ export const SHIELD_DEPLOY_SPEED = 0.4;  // radius units per frame
 export const SHIELD_HEAT_DECAY = 0.003;  // heat decay per frame (0..1)
 export const SHIELD_COLLAPSE_COOLDOWN_MS = 5000; // cooldown after overheat collapse
 export const SHIELD_ABSORB_HEAT_PER_DAMAGE = 0.1; // heat added per damage point
+export const SHIELD_RESERVE_MAX = 1.0;   // internal energy reserve (0..1)
+export const SHIELD_RESERVE_DRAIN_RATE = 0.00015;  // drain per ms (~7s of reserve idle)
+export const SHIELD_RESERVE_FIRE_MULTIPLIER = 8;   // drains 8x faster under fire
+export const SHIELD_RESERVE_CHARGE_RATE = 0.0004;  // charge per ms (~2.5s to fill when online)
 
 // Capacitor constants
 export const CAPACITOR_HEALTH = 60;

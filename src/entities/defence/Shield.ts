@@ -3,6 +3,8 @@ import {
     SHIELD_HEALTH, SHIELD_RADIUS, SHIELD_POWER_DEPLOY, SHIELD_POWER_MAINTAIN,
     SHIELD_BUBBLE_MAX_RADIUS, SHIELD_DEPLOY_SPEED, SHIELD_HEAT_DECAY,
     SHIELD_COLLAPSE_COOLDOWN_MS, SHIELD_ABSORB_HEAT_PER_DAMAGE,
+    SHIELD_RESERVE_MAX, SHIELD_RESERVE_DRAIN_RATE, SHIELD_RESERVE_FIRE_MULTIPLIER,
+    SHIELD_RESERVE_CHARGE_RATE,
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED, COLOUR_SELECTION,
     PowerPriority
 } from '../../utils/Constants';
@@ -14,6 +16,7 @@ export class Shield extends GameNode {
     bubbleRadius = 0;
     maxBubbleRadius: number = SHIELD_BUBBLE_MAX_RADIUS;
     heatLevel = 0; // 0..1
+    internalReserve = 0; // 0..1 — sustains shield briefly when disconnected
     private cooldownTimer = 0;
     private ripplePhase = 0;
     private bubbleGraphics: Phaser.GameObjects.Graphics;
@@ -50,8 +53,29 @@ export class Shield extends GameNode {
     update(_time: number, delta: number): void {
         this.ripplePhase += delta * 0.0008;
 
-        if (this.nodeState !== 'online') {
-            // Not powered — collapse if deployed
+        const powered = this.nodeState === 'online';
+
+        // Manage internal reserve
+        if (powered) {
+            // Charge reserve while receiving power
+            this.internalReserve = Math.min(
+                SHIELD_RESERVE_MAX,
+                this.internalReserve + SHIELD_RESERVE_CHARGE_RATE * delta
+            );
+        } else if (this.isShieldActive()) {
+            // Drain reserve when not powered but shield is still up
+            let drain = SHIELD_RESERVE_DRAIN_RATE * delta;
+            if (this.heatLevel > 0) {
+                drain *= 1 + (SHIELD_RESERVE_FIRE_MULTIPLIER - 1) * this.heatLevel;
+            }
+            this.internalReserve = Math.max(0, this.internalReserve - drain);
+        }
+
+        // Determine if we have any energy to sustain the shield
+        const hasEnergy = powered || this.internalReserve > 0;
+
+        if (!hasEnergy) {
+            // No power and no reserve — collapse
             if (this.shieldState === 'deploying' || this.shieldState === 'maintaining') {
                 this.bubbleRadius = Math.max(0, this.bubbleRadius - SHIELD_DEPLOY_SPEED * 3);
                 if (this.bubbleRadius <= 0) {
@@ -64,19 +88,23 @@ export class Shield extends GameNode {
 
         switch (this.shieldState) {
             case 'deploying':
-                this.bubbleRadius = Math.min(
-                    this.maxBubbleRadius,
-                    this.bubbleRadius + SHIELD_DEPLOY_SPEED
-                );
+                if (powered) {
+                    // Only grow when receiving hub/network power
+                    this.bubbleRadius = Math.min(
+                        this.maxBubbleRadius,
+                        this.bubbleRadius + SHIELD_DEPLOY_SPEED
+                    );
+                }
                 if (this.bubbleRadius >= this.maxBubbleRadius) {
                     this.shieldState = 'maintaining';
                 }
                 break;
 
             case 'maintaining':
-                // Heat decay
+                // Heat decay (slower when running on reserve only)
                 if (this.heatLevel > 0) {
-                    this.heatLevel = Math.max(0, this.heatLevel - SHIELD_HEAT_DECAY);
+                    const decayMult = powered ? 1 : 0.3;
+                    this.heatLevel = Math.max(0, this.heatLevel - SHIELD_HEAT_DECAY * decayMult);
                 }
                 break;
 
@@ -128,11 +156,14 @@ export class Shield extends GameNode {
         this.bubbleGraphics.y = this.y;
 
         if (this.bubbleRadius <= 0) return;
-        if (this.nodeState === 'offline') return;
 
         // Colour shifts from cyan to amber to red based on heat
         const baseColour = this.getShieldColour();
-        const alpha = this.nodeState === 'brownout' ? 0.3 : 0.6;
+        const onReserve = this.nodeState !== 'online' && this.internalReserve > 0;
+        // Dim when on reserve (proportional to remaining reserve), very dim on brownout
+        const alpha = onReserve
+            ? 0.2 + 0.3 * this.internalReserve
+            : this.nodeState === 'brownout' ? 0.3 : 0.6;
 
         // Organic bubble — multiple layers with sine-wave radius perturbation
         const segments = 64;
@@ -294,6 +325,18 @@ export class Shield extends GameNode {
             this.graphics.fillRect(-barWidth / 2, barY, barWidth, barHeight);
             this.graphics.fillStyle(COLOUR_RED, 0.6);
             this.graphics.fillRect(-barWidth / 2, barY, barWidth * cooldownPct, barHeight);
+        }
+
+        // Reserve bar (when shield is running on internal reserve)
+        if (!isConstructing && this.nodeState !== 'online' && this.internalReserve > 0 && this.isShieldActive()) {
+            const barWidth = this.nodeRadius * 2;
+            const barHeight = 3;
+            const barY = this.nodeRadius + 6;
+
+            this.graphics.fillStyle(0x333333, 0.8);
+            this.graphics.fillRect(-barWidth / 2, barY, barWidth, barHeight);
+            this.graphics.fillStyle(COLOUR_AMBER, 0.7);
+            this.graphics.fillRect(-barWidth / 2, barY, barWidth * this.internalReserve, barHeight);
         }
 
         // Construction progress bar
