@@ -353,13 +353,15 @@ export class BuildSystem {
     private drawShieldPreview(wx: number, wy: number, colour: number): void {
         const bubbleR = SHIELD_BUBBLE_MAX_RADIUS;
 
-        // Find existing shields that would cluster with this one
+        // Find existing shields that would directly cluster with this one
         const clusterShields: { x: number; y: number; r: number }[] = [];
+        const directTouchNodes: Set<object> = new Set();
         for (const node of this.powerNetwork.getAllNodes()) {
             if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
                 const dist = distanceBetween(wx, wy, node.x, node.y);
                 if (dist < bubbleR + node.bubbleRadius + SHIELD_CLUSTER_OVERLAP_MARGIN) {
                     clusterShields.push({ x: node.x, y: node.y, r: node.bubbleRadius });
+                    directTouchNodes.add(node);
                 }
             }
         }
@@ -369,6 +371,26 @@ export class BuildSystem {
             const dist = distanceBetween(wx, wy, hub.x, hub.y);
             if (dist < bubbleR + hub.hubShieldRadius + SHIELD_CLUSTER_OVERLAP_MARGIN) {
                 clusterShields.push({ x: hub.x, y: hub.y, r: hub.hubShieldRadius });
+                directTouchNodes.add(hub);
+            }
+        }
+
+        // Expand count to include shields already clustered with any
+        // directly-touching shield (even if they don't touch the new one)
+        let fullClusterCount = clusterShields.length + 1; // +1 for the new shield
+        if (directTouchNodes.size > 0) {
+            const clusterMgr = this.powerNetwork.getShieldClusterManager();
+            const counted = new Set<object>(directTouchNodes);
+            for (const touchedNode of directTouchNodes) {
+                const cluster = clusterMgr.getClusterFor(touchedNode as any);
+                if (cluster) {
+                    for (const member of cluster.members) {
+                        if (!counted.has(member)) {
+                            counted.add(member);
+                            fullClusterCount++;
+                        }
+                    }
+                }
             }
         }
 
@@ -445,9 +467,8 @@ export class BuildSystem {
         }
 
         // Info text
-        const clusterSize = clusterShields.length + 1; // including this new shield
         if (willCluster) {
-            const totalMembers = clusterSize;
+            const totalMembers = fullClusterCount;
             // Heat resistance scales with cluster size (damage split across members)
             const heatResist = Math.round((1 - 1 / totalMembers) * 100);
             this.shieldInfoText.setText(`Cluster: ${totalMembers} shields | ${heatResist}% heat shared`);
