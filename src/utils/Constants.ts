@@ -75,6 +75,10 @@ export const CLUSTER_ARC_SPEED = 2.5;
 export const CLUSTER_MEMBRANE_MARGIN = 15;
 export const CLUSTER_MEMBRANE_SAMPLES = 12;
 
+// Relay connection limits
+export const RELAY_MAX_CONNECTIONS = 4;    // max non-relay nodes per relay
+export const HUB_MAX_CONNECTIONS = 6;      // max non-relay nodes hub can directly serve
+
 // Capacitor constants
 export const CAPACITOR_HEALTH = 60;
 export const CAPACITOR_RADIUS = 11;

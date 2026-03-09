@@ -54,6 +54,7 @@ export class Shield extends GameNode implements IClusterShield {
     }
 
     onPowerTick(_delta: number): void {
+        super.onPowerTick(_delta);
         // Heat decay
         if (this.heatLevel > 0) {
             this.heatLevel = Math.max(0, this.heatLevel - SHIELD_HEAT_DECAY * 16); // ~16ms per frame equivalent
@@ -457,6 +458,13 @@ export class Shield extends GameNode implements IClusterShield {
             this.graphics.fillRect(-barWidth / 2, barY, barWidth, barHeight);
             this.graphics.fillStyle(healthPct > 0.3 ? COLOUR_CYAN : 0xff3d00, 0.9);
             this.graphics.fillRect(-barWidth / 2, barY, barWidth * healthPct, barHeight);
+        }
+
+        // Repair indicator (small green + near node)
+        if (this.isRepairing) {
+            this.graphics.fillStyle(0x00ff88, 0.9);
+            this.graphics.fillRect(-1, -this.nodeRadius - 4, 2, 5);
+            this.graphics.fillRect(-2.5, -this.nodeRadius - 2.5, 5, 2);
         }
     }
 

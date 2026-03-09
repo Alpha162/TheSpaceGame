@@ -158,6 +158,11 @@ export class GameNode extends Phaser.GameObjects.Container {
         return !this.upgraded && this.isFullyConstructed() && this.nodeState !== 'offline';
     }
 
+    /** Force a visual refresh. Use when external state changes affect rendering. */
+    refreshVisuals(): void {
+        this.drawNode();
+    }
+
     takeDamage(amount: number): boolean {
         this.currentHealth = Math.max(0, this.currentHealth - amount);
         this.lastDamageTime = this.scene.time.now;

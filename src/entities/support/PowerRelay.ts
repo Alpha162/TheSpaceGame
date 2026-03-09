@@ -1,12 +1,14 @@
 import { GameNode } from '../Node';
 import {
-    RELAY_HEALTH, RELAY_POWER, RELAY_RADIUS,
-    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_SELECTION, COLOUR_GREEN
+    RELAY_HEALTH, RELAY_POWER, RELAY_RADIUS, RELAY_MAX_CONNECTIONS,
+    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_SELECTION, COLOUR_GREEN, COLOUR_GREY
 } from '../../utils/Constants';
 
 export class PowerRelay extends GameNode {
     /** Upgraded relays extend link range by 30% — checked by PowerNetwork */
     linkRangeMultiplier = 1;
+    /** Current number of non-relay/non-hub nodes connected. Updated by PowerNetwork. */
+    connectedNonRelayCount = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, RELAY_HEALTH, RELAY_POWER, RELAY_RADIUS);
@@ -49,6 +51,25 @@ export class PowerRelay extends GameNode {
         this.graphics.lineTo(0, 4);
         this.graphics.strokePath();
 
+        // Connection slot indicators (dots around perimeter)
+        if (!isConstructing) {
+            const slotRadius = this.nodeRadius + 7;
+            for (let i = 0; i < RELAY_MAX_CONNECTIONS; i++) {
+                const angle = (i / RELAY_MAX_CONNECTIONS) * Math.PI * 2 - Math.PI / 2;
+                const sx = Math.cos(angle) * slotRadius;
+                const sy = Math.sin(angle) * slotRadius;
+                if (i < this.connectedNonRelayCount) {
+                    // Filled slot
+                    this.graphics.fillStyle(COLOUR_CYAN, alpha * 0.7);
+                    this.graphics.fillCircle(sx, sy, 2);
+                } else {
+                    // Empty slot
+                    this.graphics.fillStyle(COLOUR_GREY, alpha * 0.3);
+                    this.graphics.fillCircle(sx, sy, 1.5);
+                }
+            }
+        }
+
         // Upgrade chevron
         if (this.upgraded) {
             this.graphics.lineStyle(1, COLOUR_CYAN, alpha * 0.8);
@@ -70,7 +91,7 @@ export class PowerRelay extends GameNode {
         if (isConstructing) {
             const barWidth = this.nodeRadius * 2;
             const barHeight = 3;
-            const barY = this.nodeRadius + 6;
+            const barY = this.nodeRadius + 12;
 
             this.graphics.fillStyle(0x333333, 0.8);
             this.graphics.fillRect(-barWidth / 2, barY, barWidth, barHeight);
@@ -82,7 +103,7 @@ export class PowerRelay extends GameNode {
         if (!isConstructing && this.currentHealth < this.maxHealth) {
             const barWidth = this.nodeRadius * 2;
             const barHeight = 3;
-            const barY = -this.nodeRadius - 8;
+            const barY = -this.nodeRadius - 12;
             const healthPct = this.currentHealth / this.maxHealth;
 
             this.graphics.fillStyle(0x333333, 0.8);
