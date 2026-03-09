@@ -3,12 +3,14 @@ import { Enemy } from '../entities/Enemy';
 import { GameNode } from '../entities/Node';
 import { CommandHub } from '../entities/CommandHub';
 import { Shield } from '../entities/defence/Shield';
+import { Blaster } from '../entities/turrets/Blaster';
 import { ResourceManager } from './ResourceManager';
 import { PowerNetwork } from './PowerNetwork';
 import { BuildSystem } from './BuildSystem';
 import {
     WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD, ENEMY_ATTACK_RANGE,
-    COLOUR_CYAN, COLOUR_AMBER
+    ENEMY_PROJECTILE_SPEED, ENEMY_THREAT_WEIGHT,
+    COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
@@ -19,6 +21,7 @@ interface Projectile {
     vy: number;
     damage: number;
     life: number;
+    friendly: boolean; // true = player (hits enemies), false = enemy (hits nodes)
     graphics: Phaser.GameObjects.Graphics;
 }
 
@@ -46,7 +49,6 @@ export class CombatSystem {
         return this.enemies;
     }
 
-    /** Spawn a batch of enemies from random world edges, targeting the hub */
     spawnWave(count: number): void {
         const hub = this.powerNetwork.getHub();
         if (!hub) return;
@@ -69,7 +71,7 @@ export class CombatSystem {
         }
     }
 
-    /** Fire a projectile from (sx,sy) toward enemy */
+    /** Fire a friendly projectile from (sx,sy) toward enemy */
     fireProjectile(sx: number, sy: number, target: Enemy, damage: number, speed: number): void {
         const dx = target.x - sx;
         const dy = target.y - sy;
@@ -79,30 +81,75 @@ export class CombatSystem {
         gfx.setDepth(8);
 
         this.projectiles.push({
-            x: sx,
-            y: sy,
+            x: sx, y: sy,
             vx: (dx / dist) * speed,
             vy: (dy / dist) * speed,
-            damage,
-            life: 2000,
+            damage, life: 2000,
+            friendly: true,
             graphics: gfx
         });
+    }
+
+    /** Fire an enemy projectile toward a node */
+    private fireEnemyProjectile(sx: number, sy: number, target: GameNode, damage: number): void {
+        const dx = target.x - sx;
+        const dy = target.y - sy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        const gfx = this.scene.add.graphics();
+        gfx.setDepth(8);
+
+        this.projectiles.push({
+            x: sx, y: sy,
+            vx: (dx / dist) * ENEMY_PROJECTILE_SPEED,
+            vy: (dy / dist) * ENEMY_PROJECTILE_SPEED,
+            damage, life: 3000,
+            friendly: false,
+            graphics: gfx
+        });
+    }
+
+    /** Pick best target using threat-weighted scoring — enemies prefer blasters */
+    private pickTarget(enemy: Enemy, allNodes: GameNode[]): { node: GameNode; dist: number } | null {
+        let bestNode: GameNode | null = null;
+        let bestScore = Infinity;
+        let bestDist = Infinity;
+
+        for (const node of allNodes) {
+            if (node.currentHealth <= 0) continue;
+            const dist = distanceBetween(enemy.x, enemy.y, node.x, node.y);
+
+            // Blasters are threats — reduce their effective distance so enemies prioritize them
+            const isThreat = node instanceof Blaster;
+            const effectiveDist = isThreat
+                ? dist * (1 - ENEMY_THREAT_WEIGHT)
+                : dist;
+
+            if (effectiveDist < bestScore) {
+                bestScore = effectiveDist;
+                bestNode = node;
+                bestDist = dist;
+            }
+        }
+
+        return bestNode ? { node: bestNode, dist: bestDist } : null;
     }
 
     update(delta: number): void {
         const hub = this.powerNetwork.getHub();
         if (!hub) return;
 
-        // Collect all targetable nodes (hub + placed nodes)
         const allNodes: GameNode[] = [hub, ...this.buildSystem.getPlacedNodes()];
 
-        // Collect active shields
+        // Collect active player-built shields
         const activeShields: Shield[] = [];
         for (const node of this.powerNetwork.getAllNodes()) {
             if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
                 activeShields.push(node);
             }
         }
+
+        const hubShieldUp = hub.isHubShieldUp();
 
         // Update enemies
         for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -113,40 +160,30 @@ export class CombatSystem {
                 continue;
             }
 
-            // Find nearest target
-            let nearestNode: GameNode | null = null;
-            let nearestDist = Infinity;
-            for (const node of allNodes) {
-                if (node.currentHealth <= 0) continue;
-                const dist = distanceBetween(enemy.x, enemy.y, node.x, node.y);
-                if (dist < nearestDist) {
-                    nearestDist = dist;
-                    nearestNode = node;
-                }
-            }
+            // Pick target with threat-weighted AI
+            const targetResult = this.pickTarget(enemy, allNodes);
+            const nearestNode = targetResult?.node ?? null;
+            const nearestDist = targetResult?.dist ?? Infinity;
 
             if (nearestNode) {
                 enemy.setTarget(nearestNode.x, nearestNode.y);
             }
 
-            // Check shields BEFORE movement — clamp enemy to stop at shield edge
+            // Check player-built shields BEFORE movement
             let shieldTarget: Shield | null = null;
             for (const shield of activeShields) {
                 const distToShield = distanceBetween(enemy.x, enemy.y, shield.x, shield.y);
                 const stopDist = shield.bubbleRadius + enemy.radius + 1;
 
                 if (distToShield <= stopDist) {
-                    // Already at or inside shield boundary — block and attack
                     enemy.blockedByShield = true;
                     shieldTarget = shield;
                     break;
                 }
 
-                // Check if target is inside this shield — enemy needs to stop at the boundary
                 if (nearestNode) {
                     const targetToShield = distanceBetween(nearestNode.x, nearestNode.y, shield.x, shield.y);
                     if (targetToShield < shield.bubbleRadius) {
-                        // Target is shielded; clamp movement to stop at bubble edge
                         const moveAllowance = distToShield - stopDist;
                         if (moveAllowance < enemy.moveClamp) {
                             enemy.moveClamp = moveAllowance;
@@ -156,38 +193,65 @@ export class CombatSystem {
                 }
             }
 
+            // Check hub shield
+            let hitHubShield = false;
+            if (hubShieldUp && !enemy.blockedByShield) {
+                const distToHub = distanceBetween(enemy.x, enemy.y, hub.x, hub.y);
+                const stopDist = hub.hubShieldRadius + enemy.radius + 1;
+
+                if (distToHub <= stopDist) {
+                    enemy.blockedByShield = true;
+                    hitHubShield = true;
+                } else if (nearestNode) {
+                    const targetToHub = distanceBetween(nearestNode.x, nearestNode.y, hub.x, hub.y);
+                    if (targetToHub < hub.hubShieldRadius) {
+                        const moveAllowance = distToHub - stopDist;
+                        if (moveAllowance < enemy.moveClamp) {
+                            enemy.moveClamp = moveAllowance;
+                            hitHubShield = true;
+                        }
+                    }
+                }
+            }
+
             enemy.update(delta);
 
-            // After movement: re-check if now touching shield (from clamped movement)
+            // Re-check shield contact after movement
             if (!enemy.blockedByShield && shieldTarget) {
                 const distAfter = distanceBetween(enemy.x, enemy.y, shieldTarget.x, shieldTarget.y);
                 if (distAfter <= shieldTarget.bubbleRadius + enemy.radius + 3) {
                     enemy.blockedByShield = true;
                 }
             }
+            if (!enemy.blockedByShield && hitHubShield && hubShieldUp) {
+                const distAfter = distanceBetween(enemy.x, enemy.y, hub.x, hub.y);
+                if (distAfter <= hub.hubShieldRadius + enemy.radius + 3) {
+                    enemy.blockedByShield = true;
+                }
+            }
 
-            // Attack logic
-            if (enemy.canAttack()) {
+            // Attack logic — enemies fire projectiles
+            if (enemy.canAttack() && nearestNode) {
                 if (shieldTarget && (enemy.blockedByShield || enemy.moveClamp < 5)) {
-                    // Attack the shield
+                    // Shoot at shield
                     const damage = enemy.performAttack();
                     shieldTarget.absorbDamage(damage);
-                } else if (!shieldTarget && nearestNode && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
-                    // Attack node directly (no shield in the way)
+                } else if (hitHubShield && (enemy.blockedByShield || enemy.moveClamp < 5)) {
+                    // Shoot at hub shield
                     const damage = enemy.performAttack();
-                    const died = nearestNode.takeDamage(damage);
-                    if (died) {
-                        this.handleNodeDeath(nearestNode);
-                    }
+                    hub.absorbShieldDamage(damage);
+                } else if (!shieldTarget && !hitHubShield && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
+                    // In firing range — launch a projectile
+                    const damage = enemy.performAttack();
+                    this.fireEnemyProjectile(enemy.x, enemy.y, nearestNode, damage);
                 }
             }
         }
 
-        // Update projectiles
-        this.updateProjectiles(delta);
+        this.updateProjectiles(delta, allNodes, hub, activeShields);
     }
 
-    private updateProjectiles(delta: number): void {
+    private updateProjectiles(delta: number, allNodes: GameNode[], hub: CommandHub, activeShields: Shield[]): void {
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
             const p = this.projectiles[i];
             p.life -= delta;
@@ -198,22 +262,63 @@ export class CombatSystem {
                 continue;
             }
 
-            // Move
             p.x += p.vx * (delta / 1000);
             p.y += p.vy * (delta / 1000);
 
-            // Check hit against enemies
             let hit = false;
-            for (const enemy of this.enemies) {
-                if (!enemy.alive) continue;
-                const dist = distanceBetween(p.x, p.y, enemy.x, enemy.y);
-                if (dist <= enemy.radius + 3) {
-                    const died = enemy.takeDamage(p.damage);
-                    if (died) {
-                        this.resourceManager.earn(ENEMY_MINERAL_REWARD);
+
+            if (p.friendly) {
+                // Friendly projectile — hits enemies
+                for (const enemy of this.enemies) {
+                    if (!enemy.alive) continue;
+                    const dist = distanceBetween(p.x, p.y, enemy.x, enemy.y);
+                    if (dist <= enemy.radius + 3) {
+                        const died = enemy.takeDamage(p.damage);
+                        if (died) {
+                            this.resourceManager.earn(ENEMY_MINERAL_REWARD);
+                        }
+                        hit = true;
+                        break;
                     }
-                    hit = true;
-                    break;
+                }
+            } else {
+                // Enemy projectile — blocked by shields, then hits nodes
+
+                // Check hub shield intercept
+                if (hub.isHubShieldUp()) {
+                    const dist = distanceBetween(p.x, p.y, hub.x, hub.y);
+                    if (dist <= hub.hubShieldRadius) {
+                        hub.absorbShieldDamage(p.damage);
+                        hit = true;
+                    }
+                }
+
+                // Check player shield bubbles
+                if (!hit) {
+                    for (const shield of activeShields) {
+                        const dist = distanceBetween(p.x, p.y, shield.x, shield.y);
+                        if (dist <= shield.bubbleRadius) {
+                            shield.absorbDamage(p.damage);
+                            hit = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check direct node hits
+                if (!hit) {
+                    for (const node of allNodes) {
+                        if (node.currentHealth <= 0) continue;
+                        const dist = distanceBetween(p.x, p.y, node.x, node.y);
+                        if (dist <= node.nodeRadius + 3) {
+                            const died = node.takeDamage(p.damage);
+                            if (died) {
+                                this.handleNodeDeath(node);
+                            }
+                            hit = true;
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -228,12 +333,21 @@ export class CombatSystem {
             p.graphics.x = p.x;
             p.graphics.y = p.y;
 
-            const age = 2000 - p.life;
+            const maxLife = p.friendly ? 2000 : 3000;
+            const age = maxLife - p.life;
             const flash = age < 50 ? 1 : 0.7;
-            p.graphics.fillStyle(COLOUR_CYAN, flash);
-            p.graphics.fillCircle(0, 0, 2);
-            p.graphics.fillStyle(COLOUR_AMBER, flash * 0.4);
-            p.graphics.fillCircle(0, 0, 3.5);
+
+            if (p.friendly) {
+                p.graphics.fillStyle(COLOUR_CYAN, flash);
+                p.graphics.fillCircle(0, 0, 2);
+                p.graphics.fillStyle(COLOUR_AMBER, flash * 0.4);
+                p.graphics.fillCircle(0, 0, 3.5);
+            } else {
+                p.graphics.fillStyle(COLOUR_RED, flash);
+                p.graphics.fillCircle(0, 0, 2);
+                p.graphics.fillStyle(COLOUR_RED, flash * 0.3);
+                p.graphics.fillCircle(0, 0, 4);
+            }
         }
     }
 

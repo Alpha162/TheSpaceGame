@@ -541,6 +541,11 @@ export class PowerNetwork {
             link.animate();
         }
 
+        // Update hub built-in shield
+        if (this.hub) {
+            this.hub.updateHubShield(delta);
+        }
+
         // Update shield visuals every frame
         // First, collect all active shields and set up sibling references for merging
         const activeShields: Shield[] = [];

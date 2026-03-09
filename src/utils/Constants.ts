@@ -20,6 +20,9 @@ export const STAR_PARALLAX = [0.2, 0.5, 0.8];
 export const COMMAND_HUB_HEALTH = 500;
 export const COMMAND_HUB_POWER_GEN = 100; // power generated per tick
 export const COMMAND_HUB_RADIUS = 30;
+export const COMMAND_HUB_SHIELD_RADIUS = 72; // built-in shield (~20% larger than normal)
+export const COMMAND_HUB_SHIELD_POWER = 10;  // power cost to maintain hub shield
+export const COMMAND_HUB_SHIELD_HEAT_DECAY = 0.004; // slightly faster recovery than normal
 
 // Resources
 export const STARTING_MINERALS = 300;
@@ -131,9 +134,11 @@ export const ENEMY_RADIUS = 6;
 export const ENEMY_HEALTH = 30;
 export const ENEMY_SPEED = 0.04;          // world units per ms
 export const ENEMY_DAMAGE = 5;            // damage per hit
-export const ENEMY_ATTACK_COOLDOWN = 1500; // ms between attacks
-export const ENEMY_ATTACK_RANGE = 25;     // range at which enemy attacks
+export const ENEMY_ATTACK_COOLDOWN = 2000; // ms between attacks
+export const ENEMY_ATTACK_RANGE = 100;    // range at which enemy stops and fires
 export const ENEMY_MINERAL_REWARD = 10;   // minerals dropped on death
+export const ENEMY_PROJECTILE_SPEED = 180; // world units per second
+export const ENEMY_THREAT_WEIGHT = 0.6;   // weight for preferring threat targets (0=nearest only, 1=threats only)
 
 // Node repair constants
 export const NODE_REPAIR_DELAY_MS = 3000;    // ms after last damage before repair starts

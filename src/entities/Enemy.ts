@@ -105,6 +105,18 @@ export class Enemy {
 
         const healthPct = this.health / this.maxHealth;
 
+        // Barrel pointing toward target
+        const dx = this.targetX - this.x;
+        const dy = this.targetY - this.y;
+        const angle = Math.atan2(dy, dx);
+        const barrelLen = this.radius + 3;
+
+        this.graphics.lineStyle(1.5, COLOUR_RED, 0.7);
+        this.graphics.beginPath();
+        this.graphics.moveTo(0, 0);
+        this.graphics.lineTo(Math.cos(angle) * barrelLen, Math.sin(angle) * barrelLen);
+        this.graphics.strokePath();
+
         // Body — red circle with dark fill
         this.graphics.fillStyle(COLOUR_DARK_METAL, 0.8);
         this.graphics.fillCircle(0, 0, this.radius);

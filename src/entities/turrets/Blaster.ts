@@ -5,7 +5,7 @@ import {
     BLASTER_HEALTH, BLASTER_RADIUS, BLASTER_POWER, BLASTER_RANGE,
     BLASTER_FIRE_RATE, BLASTER_DAMAGE, BLASTER_PROJECTILE_SPEED,
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED, COLOUR_SELECTION, COLOUR_GREEN,
-    PowerPriority
+    PowerPriority, NODE_REPAIR_POWER_COST
 } from '../../utils/Constants';
 import { distanceBetween } from '../../utils/Helpers';
 
@@ -28,6 +28,16 @@ export class Blaster extends GameNode {
 
     setCombatSystem(combatSystem: CombatSystem): void {
         this.combatSystem = combatSystem;
+    }
+
+    /** Only draw power when actively targeting an enemy */
+    getCurrentPowerDraw(): number {
+        if (!this.currentTarget) return 0;
+        let draw = this.powerConsumption;
+        if (this.isRepairing) {
+            draw += NODE_REPAIR_POWER_COST;
+        }
+        return draw;
     }
 
     update(_time: number, delta: number): void {
