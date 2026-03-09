@@ -56,6 +56,11 @@ export class GameScene extends Phaser.Scene {
         // Cross-wire: build system needs combat system for blaster turrets
         this.buildSystem.setCombatSystem(this.combatSystem);
 
+        // Game over when hub is destroyed
+        this.events.once('hub-destroyed', () => {
+            this.scene.start('GameOverScene');
+        });
+
         // UI (fixed to camera)
         this.hud = new HUD(this, this.resourceManager, this.powerNetwork);
         this.buildMenu = new BuildMenu(this, this.buildSystem);

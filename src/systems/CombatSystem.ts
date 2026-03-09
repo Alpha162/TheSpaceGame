@@ -358,7 +358,7 @@ export class CombatSystem {
 
     private handleNodeDeath(node: GameNode): void {
         if (node instanceof CommandHub) {
-            console.log('Command Hub destroyed! Game Over.');
+            this.scene.events.emit('hub-destroyed');
             return;
         }
 
