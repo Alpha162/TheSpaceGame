@@ -52,48 +52,6 @@ export class GameScene extends Phaser.Scene {
             this.uiCam.ignore(child);
         }
     };
-    private readonly onWheel: (pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => void = (pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
-        const cam = this.cameras.main;
-        const oldZoom = cam.zoom;
-        let newZoom: number;
-
-        if (dy > 0) {
-            newZoom = Math.max(CAMERA_ZOOM_MIN, oldZoom - CAMERA_ZOOM_STEP);
-        } else if (dy < 0) {
-            newZoom = Math.min(CAMERA_ZOOM_MAX, oldZoom + CAMERA_ZOOM_STEP);
-        } else {
-            return;
-        }
-
-        const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-        cam.zoom = newZoom;
-
-        const newWorldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-        cam.scrollX += worldPoint.x - newWorldPoint.x;
-        cam.scrollY += worldPoint.y - newWorldPoint.y;
-    };
-    private readonly onPointerDown: (pointer: Phaser.Input.Pointer) => void = (pointer: Phaser.Input.Pointer) => {
-        if (pointer.middleButtonDown()) {
-            this.startDrag(pointer);
-        }
-    };
-    private readonly onPointerMove: (pointer: Phaser.Input.Pointer) => void = (pointer: Phaser.Input.Pointer) => {
-        if (this.isDragging) {
-            const cam = this.cameras.main;
-            const dx = (this.dragStartX - pointer.x) / cam.zoom;
-            const dy = (this.dragStartY - pointer.y) / cam.zoom;
-            cam.scrollX = this.dragCamStartX + dx;
-            cam.scrollY = this.dragCamStartY + dy;
-        }
-    };
-    private readonly onPointerUp: (pointer: Phaser.Input.Pointer) => void = (pointer: Phaser.Input.Pointer) => {
-        if (this.isDragging && !pointer.middleButtonDown()) {
-            this.isDragging = false;
-        }
-    };
-    private readonly onKeyDownP: () => void = () => {
-        this.togglePause();
-    };
 
     constructor() {
         super({ key: 'GameScene' });
@@ -161,6 +119,9 @@ export class GameScene extends Phaser.Scene {
                 this.uiCam.ignore(child);
             }
         });
+        // Auto-ignore new world objects on UI camera
+        this.events.on('addedtoscene', this.onAddedToScene, this);
+
         // Keyboard input (WASD only)
         if (this.input.keyboard) {
             this.wasd = {
@@ -181,9 +142,6 @@ export class GameScene extends Phaser.Scene {
 
         // Pause button (top-right)
         this.createPauseButton();
-
-        // Auto-ignore new world objects on UI camera (after all UI is created)
-        this.events.on('addedtoscene', this.onAddedToScene, this);
 
         this.scale.on('resize', this.onScaleResize, this);
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
@@ -241,7 +199,19 @@ export class GameScene extends Phaser.Scene {
             this.cameras.main.ignore(obj);
         }
 
+        this.rebuildUiCamera();
         this.handleResize(this.scale.width, this.scale.height);
+    }
+
+    private rebuildUiCamera(): void {
+        this.cameras.remove(this.uiCam);
+        this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.uiCam.setScroll(0, 0);
+        this.children.each((child) => {
+            if (!this.uiObjects.has(child)) {
+                this.uiCam.ignore(child);
+            }
+        });
     }
 
     private redrawPauseOverlay(width: number, height: number): void {
@@ -299,13 +269,13 @@ export class GameScene extends Phaser.Scene {
         this.events.off('addedtoscene', this.onAddedToScene, this);
 
         if (this.input.keyboard) {
-            this.input.keyboard.off('keydown-P', this.onKeyDownP, this);
+            this.input.keyboard.off('keydown-P');
         }
 
-        this.input.off('wheel', this.onWheel, this);
-        this.input.off('pointerdown', this.onPointerDown, this);
-        this.input.off('pointermove', this.onPointerMove, this);
-        this.input.off('pointerup', this.onPointerUp, this);
+        this.input.off('wheel');
+        this.input.off('pointerdown');
+        this.input.off('pointermove');
+        this.input.off('pointerup');
 
         this.hud.destroy();
         this.buildMenu.destroy();
