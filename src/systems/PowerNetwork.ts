@@ -187,12 +187,18 @@ export class PowerNetwork {
         }
 
         // Update link visuals and flow direction
+        // Only show pulses on BFS tree edges (parent-child) that carry power
         for (const link of this.links) {
             link.setFlowDirection(this.bfsDistances);
             link.updateState(visited);
-            const aCarries = powerCarrying.has(link.getNodeA()) || link.getNodeA() === this.hub;
-            const bCarries = powerCarrying.has(link.getNodeB()) || link.getNodeB() === this.hub;
-            link.setShowPulses(aCarries && bCarries);
+
+            const a = link.getNodeA();
+            const b = link.getNodeB();
+            // Check if this link is a BFS tree edge (one node is the parent of the other)
+            const isTreeEdge = parent.get(a) === b || parent.get(b) === a;
+            const aCarries = powerCarrying.has(a) || a === this.hub;
+            const bCarries = powerCarrying.has(b) || b === this.hub;
+            link.setShowPulses(isTreeEdge && aCarries && bCarries);
         }
     }
 
@@ -340,6 +346,16 @@ export class PowerNetwork {
         }
 
         // Update shield visuals every frame
+        // First, collect all active shields and set up sibling references for merging
+        const activeShields: Shield[] = [];
+        for (const node of this.adjacency.keys()) {
+            if (node instanceof Shield && node.isFullyConstructed() && node.bubbleRadius > 0) {
+                activeShields.push(node);
+            }
+        }
+        for (const shield of activeShields) {
+            shield.siblingShields = activeShields.filter(s => s !== shield);
+        }
         for (const node of this.adjacency.keys()) {
             if (node instanceof Shield && node.isFullyConstructed()) {
                 node.update(0, delta);

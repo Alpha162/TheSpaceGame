@@ -106,7 +106,7 @@ export const BUILD_PHASE_DURATION = 15;
 export const MIN_NODE_DISTANCE = 30;
 
 // Construction
-export const CONSTRUCTION_TIME_MS = 3000;
+export const CONSTRUCTION_TIME_MS = 10000;
 
 // Selection
 export const COLOUR_SELECTION = 0xffd700;

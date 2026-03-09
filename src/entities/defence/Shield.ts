@@ -17,6 +17,8 @@ export class Shield extends GameNode {
     private cooldownTimer = 0;
     private ripplePhase = 0;
     private bubbleGraphics: Phaser.GameObjects.Graphics;
+    /** Other active shields for merged rendering */
+    siblingShields: Shield[] = [];
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
@@ -46,7 +48,7 @@ export class Shield extends GameNode {
     }
 
     update(_time: number, delta: number): void {
-        this.ripplePhase += delta * 0.003;
+        this.ripplePhase += delta * 0.0008;
 
         if (this.nodeState !== 'online') {
             // Not powered — collapse if deployed
@@ -147,12 +149,14 @@ export class Shield extends GameNode {
             this.drawOrganicRing(segments, shimmerRadius, baseColour, alpha * 0.08, 1, Math.PI);
         }
 
-        // Ripple rings — concentric waves that pulse outward
+        // Ripple rings — concentric waves that pulse outward (ease-in: slow near center, fast at edge)
         const rippleCount = 3;
         for (let i = 0; i < rippleCount; i++) {
-            const rippleT = (this.ripplePhase + i / rippleCount) % 1;
-            const rippleR = this.bubbleRadius * (0.3 + rippleT * 0.7);
-            const rippleAlpha = (1 - rippleT) * alpha * 0.12;
+            const rippleLinearT = (this.ripplePhase + i / rippleCount) % 1;
+            // Quadratic ease-in: starts slow, accelerates outward
+            const rippleT = rippleLinearT * rippleLinearT;
+            const rippleR = this.bubbleRadius * (0.15 + rippleT * 0.85);
+            const rippleAlpha = (1 - rippleLinearT) * alpha * 0.12;
             if (rippleAlpha > 0.01) {
                 this.drawOrganicRing(segments, rippleR, baseColour, rippleAlpha, 1, i * 1.5);
             }
@@ -171,11 +175,11 @@ export class Shield extends GameNode {
         alpha: number, lineWidth: number, phaseOffset: number
     ): void {
         this.bubbleGraphics.lineStyle(lineWidth, colour, alpha);
-        this.bubbleGraphics.beginPath();
 
+        // Build array of points with inside-sibling flags for clipping
+        const points: Array<{ px: number; py: number; inside: boolean }> = [];
         for (let i = 0; i <= segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
-            // Organic wobble: combine multiple sine waves for natural feel
             const wobble = 1 +
                 Math.sin(angle * 3 + this.ripplePhase * 2 + phaseOffset) * 0.02 +
                 Math.sin(angle * 7 - this.ripplePhase * 1.3 + phaseOffset) * 0.01 +
@@ -185,13 +189,45 @@ export class Shield extends GameNode {
             const px = Math.cos(angle) * r;
             const py = Math.sin(angle) * r;
 
-            if (i === 0) {
-                this.bubbleGraphics.moveTo(px, py);
+            // Check if this point (in world space) falls inside a sibling shield's bubble
+            const worldX = this.x + px;
+            const worldY = this.y + py;
+            let inside = false;
+            for (const sib of this.siblingShields) {
+                if (sib.bubbleRadius <= 0) continue;
+                const dx = worldX - sib.x;
+                const dy = worldY - sib.y;
+                if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
+                    inside = true;
+                    break;
+                }
+            }
+            points.push({ px, py, inside });
+        }
+
+        // Draw only segments that are outside sibling bubbles (split into sub-paths)
+        let inPath = false;
+        for (let i = 0; i < points.length; i++) {
+            const pt = points[i];
+            if (pt.inside) {
+                // End current sub-path if we were drawing
+                if (inPath) {
+                    this.bubbleGraphics.strokePath();
+                    inPath = false;
+                }
             } else {
-                this.bubbleGraphics.lineTo(px, py);
+                if (!inPath) {
+                    this.bubbleGraphics.beginPath();
+                    this.bubbleGraphics.moveTo(pt.px, pt.py);
+                    inPath = true;
+                } else {
+                    this.bubbleGraphics.lineTo(pt.px, pt.py);
+                }
             }
         }
-        this.bubbleGraphics.strokePath();
+        if (inPath) {
+            this.bubbleGraphics.strokePath();
+        }
     }
 
     private getShieldColour(): number {
