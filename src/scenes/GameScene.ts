@@ -37,6 +37,7 @@ export class GameScene extends Phaser.Scene {
     private dragStartY = 0;
     private dragCamStartX = 0;
     private dragCamStartY = 0;
+    private dragButton: 'right' | null = null;
     private isPaused = false;
     private pauseOverlay!: Phaser.GameObjects.Graphics;
     private pauseText!: Phaser.GameObjects.Text;
@@ -150,10 +151,19 @@ export class GameScene extends Phaser.Scene {
             cam.scrollY += worldPoint.y - newWorldPoint.y;
         });
 
-        // Middle-mouse or right-mouse drag to pan camera
+        // Right-mouse drag to pan camera (middle button intentionally unused)
         this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (pointer.middleButtonDown()) {
-                this.startDrag(pointer);
+            if (pointer.rightButtonDown()) {
+                // Right-click is reserved for build cancel while a build type is active.
+                if (this.buildSystem.isBuilding()) {
+                    return;
+                }
+
+                // If a right-click just cancelled build mode, don't also begin camera drag.
+                if (this.buildSystem.consumeRightDragSuppression()) {
+                    return;
+                }
+                this.startDrag(pointer, 'right');
             }
         });
         this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
@@ -166,8 +176,10 @@ export class GameScene extends Phaser.Scene {
             }
         });
         this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-            if (this.isDragging && !pointer.middleButtonDown()) {
-                this.isDragging = false;
+            if (!this.isDragging) return;
+
+            if (this.dragButton === 'right' && !pointer.rightButtonDown()) {
+                this.stopDrag();
             }
         });
 
@@ -182,12 +194,18 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
-    private startDrag(pointer: Phaser.Input.Pointer): void {
+    private startDrag(pointer: Phaser.Input.Pointer, button: 'right'): void {
         this.isDragging = true;
+        this.dragButton = button;
         this.dragStartX = pointer.x;
         this.dragStartY = pointer.y;
         this.dragCamStartX = this.cameras.main.scrollX;
         this.dragCamStartY = this.cameras.main.scrollY;
+    }
+
+    private stopDrag(): void {
+        this.isDragging = false;
+        this.dragButton = null;
     }
 
     private createPauseButton(): void {

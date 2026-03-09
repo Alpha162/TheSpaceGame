@@ -64,6 +64,7 @@ export class BuildSystem {
     private mineralManager: MineralManager | null = null;
     private asteroids: MineralAsteroid[] = [];
     private shieldInfoText: Phaser.GameObjects.Text;
+    private suppressNextRightDrag = false;
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.scene = scene;
@@ -100,6 +101,7 @@ export class BuildSystem {
             if (pointer.rightButtonDown()) {
                 if (this.activeBuildType) {
                     this.cancelBuild();
+                    this.suppressNextRightDrag = true;
                 } else {
                     this.deselectNode();
                 }
@@ -190,6 +192,12 @@ export class BuildSystem {
 
     isBuilding(): boolean {
         return this.activeBuildType !== null;
+    }
+
+    consumeRightDragSuppression(): boolean {
+        const shouldSuppress = this.suppressNextRightDrag;
+        this.suppressNextRightDrag = false;
+        return shouldSuppress;
     }
 
     getActiveBuildType(): BuildableType | null {
