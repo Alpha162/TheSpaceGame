@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Enemy, EnemyType } from '../entities/Enemy';
+import { Enemy, EnemyType, ProjectileInfo } from '../entities/Enemy';
 import { GameNode } from '../entities/Node';
 import { CommandHub } from '../entities/CommandHub';
 import { Shield } from '../entities/defence/Shield';
@@ -165,6 +165,23 @@ export class CombatSystem {
         return bestNode ? { node: bestNode, dist: bestDist } : null;
     }
 
+    /** Does line segment (ax,ay)→(bx,by) intersect circle at (cx,cy) radius r? */
+    private lineIntersectsCircle(ax: number, ay: number, bx: number, by: number,
+        cx: number, cy: number, r: number): boolean {
+        const dx = bx - ax, dy = by - ay;
+        const fx = ax - cx, fy = ay - cy;
+        const a = dx * dx + dy * dy;
+        if (a < 0.001) return false;
+        const b = 2 * (fx * dx + fy * dy);
+        const c = fx * fx + fy * fy - r * r;
+        const disc = b * b - 4 * a * c;
+        if (disc < 0) return false;
+        const sqrtDisc = Math.sqrt(disc);
+        const t1 = (-b - sqrtDisc) / (2 * a);
+        const t2 = (-b + sqrtDisc) / (2 * a);
+        return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+    }
+
     update(delta: number): void {
         const hub = this.powerNetwork.getHub();
         if (!hub) return;
@@ -181,12 +198,21 @@ export class CombatSystem {
 
         const hubShieldUp = hub.isHubShieldUp();
 
+        // Collect friendly projectile data for enemy avoidance behaviors
+        const friendlyProjectiles: ProjectileInfo[] = [];
+        for (const p of this.projectiles) {
+            if (p.friendly) {
+                friendlyProjectiles.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy });
+            }
+        }
+
+        // Collect drones for flocking
+        const drones = this.enemies.filter(e => e.alive && e.enemyType === 'drone');
+
         // Update enemies
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
             if (!enemy.alive) {
-                // Spawn mineral pickup for kills not handled by projectile hits
-                // (e.g. Laser direct damage, Missile AoE)
                 if (this.mineralManager) {
                     this.mineralManager.spawnPickup(enemy.x, enemy.y, enemy.reward);
                 } else {
@@ -199,33 +225,44 @@ export class CombatSystem {
 
             // Pick target with threat-weighted AI
             const targetResult = this.pickTarget(enemy, allNodes);
-            const nearestNode = targetResult?.node ?? null;
-            const nearestDist = targetResult?.dist ?? Infinity;
+            let nearestNode = targetResult?.node ?? null;
+            let nearestDist = targetResult?.dist ?? Infinity;
 
             if (nearestNode) {
                 enemy.setTarget(nearestNode.x, nearestNode.y);
             }
 
-            // Check player-built shields BEFORE movement
+            // --- Shield path detection ---
+            // Proactively detect shields blocking the path to the target,
+            // even when far away, so enemies target shields from range.
             let shieldTarget: Shield | null = null;
-            for (const shield of activeShields) {
-                const distToShield = distanceBetween(enemy.x, enemy.y, shield.x, shield.y);
-                const stopDist = shield.bubbleRadius + enemy.radius + 1;
 
-                if (distToShield <= stopDist) {
-                    enemy.blockedByShield = true;
-                    shieldTarget = shield;
-                    break;
-                }
+            if (nearestNode) {
+                // Check if any player shield bubble lies on the path
+                for (const shield of activeShields) {
+                    if (shield === nearestNode) continue;
+                    const distToShield = distanceBetween(enemy.x, enemy.y, shield.x, shield.y);
+                    const stopDist = shield.bubbleRadius + enemy.radius + 1;
 
-                if (nearestNode) {
-                    const targetToShield = distanceBetween(nearestNode.x, nearestNode.y, shield.x, shield.y);
-                    if (targetToShield < shield.bubbleRadius) {
+                    // Contact check
+                    if (distToShield <= stopDist) {
+                        enemy.blockedByShield = true;
+                        shieldTarget = shield;
+                        break;
+                    }
+
+                    // Path intersection check: is the shield bubble between enemy and target?
+                    if (this.lineIntersectsCircle(
+                        enemy.x, enemy.y, nearestNode.x, nearestNode.y,
+                        shield.x, shield.y, shield.bubbleRadius
+                    )) {
+                        shieldTarget = shield;
+                        // Also clamp movement so we don't overshoot into the bubble
                         const moveAllowance = distToShield - stopDist;
                         if (moveAllowance < enemy.moveClamp) {
                             enemy.moveClamp = moveAllowance;
-                            shieldTarget = shield;
                         }
+                        break;
                     }
                 }
             }
@@ -239,6 +276,18 @@ export class CombatSystem {
                 if (distToHub <= stopDist) {
                     enemy.blockedByShield = true;
                     hitHubShield = true;
+                } else if (nearestNode && nearestNode !== hub) {
+                    // Check if hub shield lies on path to target
+                    if (this.lineIntersectsCircle(
+                        enemy.x, enemy.y, nearestNode.x, nearestNode.y,
+                        hub.x, hub.y, hub.hubShieldRadius
+                    )) {
+                        hitHubShield = true;
+                        const moveAllowance = distToHub - stopDist;
+                        if (moveAllowance < enemy.moveClamp) {
+                            enemy.moveClamp = moveAllowance;
+                        }
+                    }
                 } else if (nearestNode) {
                     const targetToHub = distanceBetween(nearestNode.x, nearestNode.y, hub.x, hub.y);
                     if (targetToHub < hub.hubShieldRadius) {
@@ -251,20 +300,25 @@ export class CombatSystem {
                 }
             }
 
-            // When blocked by a shield, retarget to the blocking shield so the
-            // enemy attacks it instead of standing idle against the bubble wall.
-            let attackTarget = nearestNode;
-            let attackDist = nearestDist;
+            // Retarget to the blocking shield so the enemy attacks it at range
+            let attackTarget: GameNode | null = nearestNode;
+            let attackDist: number = nearestDist;
 
-            if (shieldTarget && (enemy.blockedByShield || enemy.moveClamp < Infinity)) {
+            if (shieldTarget) {
                 attackTarget = shieldTarget;
                 attackDist = distanceBetween(enemy.x, enemy.y, shieldTarget.x, shieldTarget.y);
                 enemy.setTarget(shieldTarget.x, shieldTarget.y);
             } else if (hitHubShield) {
-                // Hub shield blocks the path — attack the hub (damage absorbed by shield in flight)
                 attackTarget = hub;
                 attackDist = distanceBetween(enemy.x, enemy.y, hub.x, hub.y);
                 enemy.setTarget(hub.x, hub.y);
+            }
+
+            // Inject behavioral data before update
+            if (enemy.enemyType === 'scout') {
+                enemy.computeScoutEvasion(friendlyProjectiles);
+            } else if (enemy.enemyType === 'drone') {
+                enemy.computeDroneFlocking(drones, friendlyProjectiles);
             }
 
             enemy.update(delta);
@@ -283,7 +337,16 @@ export class CombatSystem {
                 }
             }
 
-            // Attack logic — enemies fire projectiles at range; shields intercept in flight
+            // Attack logic — enemies fire projectiles at range
+            // Recompute distance after movement; for shields, measure from bubble edge
+            if (attackTarget) {
+                attackDist = distanceBetween(enemy.x, enemy.y, attackTarget.x, attackTarget.y);
+                if (shieldTarget && attackTarget === shieldTarget) {
+                    attackDist = Math.max(0, attackDist - shieldTarget.bubbleRadius);
+                } else if (hitHubShield && attackTarget === hub) {
+                    attackDist = Math.max(0, attackDist - hub.hubShieldRadius);
+                }
+            }
             if (enemy.canAttack() && attackTarget && attackDist <= enemy.getAttackRange() + enemy.radius) {
                 const damage = enemy.performAttack();
                 this.fireEnemyProjectile(enemy.x, enemy.y, attackTarget, damage);

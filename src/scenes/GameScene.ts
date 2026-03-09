@@ -126,14 +126,28 @@ export class GameScene extends Phaser.Scene {
             };
         }
 
-        // Mouse wheel zoom
-        this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
+        // Mouse wheel zoom toward pointer position
+        this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
             const cam = this.cameras.main;
+            const oldZoom = cam.zoom;
+            let newZoom: number;
+
             if (dy > 0) {
-                cam.zoom = Math.max(CAMERA_ZOOM_MIN, cam.zoom - CAMERA_ZOOM_STEP);
+                newZoom = Math.max(CAMERA_ZOOM_MIN, oldZoom - CAMERA_ZOOM_STEP);
             } else if (dy < 0) {
-                cam.zoom = Math.min(CAMERA_ZOOM_MAX, cam.zoom + CAMERA_ZOOM_STEP);
+                newZoom = Math.min(CAMERA_ZOOM_MAX, oldZoom + CAMERA_ZOOM_STEP);
+            } else {
+                return;
             }
+
+            // Zoom toward the world point under the mouse
+            const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+            cam.zoom = newZoom;
+
+            // After zoom, adjust scroll so worldPoint stays under the mouse
+            const newWorldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+            cam.scrollX += worldPoint.x - newWorldPoint.x;
+            cam.scrollY += worldPoint.y - newWorldPoint.y;
         });
 
         // Middle-mouse or right-mouse drag to pan camera

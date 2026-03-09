@@ -49,6 +49,12 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyConfig> = {
 const STRAFE_SPEED_FACTOR = 0.6;
 const RADIAL_CORRECTION_FACTOR = 0.3;
 
+/** Projectile info passed by CombatSystem for avoidance */
+export interface ProjectileInfo {
+    x: number; y: number;
+    vx: number; vy: number;
+}
+
 export class Enemy {
     readonly graphics: Phaser.GameObjects.Graphics;
     x: number;
@@ -64,12 +70,18 @@ export class Enemy {
     private attackCooldownMax: number;
     private attackRange: number;
     private attackCooldown = 0;
-    private targetX: number;
-    private targetY: number;
+    targetX: number;
+    targetY: number;
     alive = true;
     blockedByShield = false;
     moveClamp = Infinity;
     private orbitDir: 1 | -1;
+
+    // Behavioral forces injected by CombatSystem each frame
+    private evasionFx = 0;
+    private evasionFy = 0;
+    private flockFx = 0;
+    private flockFy = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number, type: EnemyType = 'drone') {
         const config = ENEMY_CONFIGS[type];
@@ -101,6 +113,115 @@ export class Enemy {
     setTarget(x: number, y: number): void {
         this.targetX = x;
         this.targetY = y;
+    }
+
+    /** Scout evasion: dodge incoming friendly projectiles */
+    computeScoutEvasion(projectiles: ProjectileInfo[]): void {
+        this.evasionFx = 0;
+        this.evasionFy = 0;
+        if (this.enemyType !== 'scout') return;
+
+        for (const p of projectiles) {
+            const dx = this.x - p.x;
+            const dy = this.y - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 120) continue;
+
+            // Is projectile heading toward us?
+            const dot = p.vx * dx + p.vy * dy;
+            if (dot <= 0) continue;
+
+            // How close will the projectile pass?
+            const pvLen = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+            if (pvLen < 0.1) continue;
+            const nx = p.vx / pvLen;
+            const ny = p.vy / pvLen;
+            const projLen = dx * nx + dy * ny;
+            const closestX = p.x + nx * projLen;
+            const closestY = p.y + ny * projLen;
+            const passDx = this.x - closestX;
+            const passDy = this.y - closestY;
+            const passDist = Math.sqrt(passDx * passDx + passDy * passDy);
+
+            if (passDist < 25) {
+                // Dodge perpendicular to projectile velocity
+                const perpX = -ny;
+                const perpY = nx;
+                const side = (this.x - p.x) * perpY - (this.y - p.y) * perpX;
+                const sign = side >= 0 ? 1 : -1;
+                const strength = (25 - passDist) / 25;
+                this.evasionFx += perpX * sign * strength * 2;
+                this.evasionFy += perpY * sign * strength * 2;
+            }
+        }
+    }
+
+    /** Drone flocking: cohesion, separation, and projectile avoidance */
+    computeDroneFlocking(drones: Enemy[], projectiles: ProjectileInfo[]): void {
+        this.flockFx = 0;
+        this.flockFy = 0;
+        if (this.enemyType !== 'drone') return;
+
+        let sepX = 0, sepY = 0;
+        let cohX = 0, cohY = 0;
+        let cohCount = 0;
+        let alignVx = 0, alignVy = 0;
+
+        for (const other of drones) {
+            if (other === this || !other.alive) continue;
+            const dx = this.x - other.x;
+            const dy = this.y - other.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // Separation — push away from very close drones
+            if (dist < 20 && dist > 0.1) {
+                sepX += (dx / dist) * (20 - dist) / 20;
+                sepY += (dy / dist) * (20 - dist) / 20;
+            }
+
+            // Cohesion + alignment with nearby drones
+            if (dist < 100) {
+                cohX += other.x;
+                cohY += other.y;
+                // Alignment: match neighbors' velocity direction
+                const otx = other.targetX - other.x;
+                const oty = other.targetY - other.y;
+                const otd = Math.sqrt(otx * otx + oty * oty);
+                if (otd > 0.1) {
+                    alignVx += otx / otd;
+                    alignVy += oty / otd;
+                }
+                cohCount++;
+            }
+        }
+
+        if (cohCount > 0) {
+            // Cohesion: steer toward center of mass
+            cohX = (cohX / cohCount - this.x);
+            cohY = (cohY / cohCount - this.y);
+            const cd = Math.sqrt(cohX * cohX + cohY * cohY);
+            if (cd > 0.1) { cohX /= cd; cohY /= cd; }
+        }
+
+        // Projectile avoidance — open around incoming projectiles
+        let avoidX = 0, avoidY = 0;
+        for (const p of projectiles) {
+            const dx = this.x - p.x;
+            const dy = this.y - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 80 || dist < 0.1) continue;
+
+            // Only avoid if projectile is heading toward us
+            const dot = p.vx * dx + p.vy * dy;
+            if (dot <= 0) continue;
+
+            const strength = (80 - dist) / 80;
+            avoidX += (dx / dist) * strength;
+            avoidY += (dy / dist) * strength;
+        }
+
+        this.flockFx = sepX * 0.6 + cohX * 0.15 + alignVx * 0.05 + avoidX * 0.8;
+        this.flockFy = sepY * 0.6 + cohY * 0.15 + alignVy * 0.05 + avoidY * 0.8;
     }
 
     update(delta: number): void {
@@ -142,6 +263,15 @@ export class Enemy {
 
             this.x += vx;
             this.y += vy;
+        }
+
+        // Apply type-specific behavioral forces
+        if (this.enemyType === 'scout') {
+            this.x += this.evasionFx * this.speed * delta;
+            this.y += this.evasionFy * this.speed * delta;
+        } else if (this.enemyType === 'drone') {
+            this.x += this.flockFx * this.speed * delta;
+            this.y += this.flockFy * this.speed * delta;
         }
 
         this.blockedByShield = false;

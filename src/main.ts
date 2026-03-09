@@ -5,10 +5,12 @@ import { GameScene } from './scenes/GameScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { COLOUR_BG } from './utils/Constants';
 
+const dpr = window.devicePixelRatio || 1;
+
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: window.innerWidth,
-    height: window.innerHeight,
+    width: window.innerWidth * dpr,
+    height: window.innerHeight * dpr,
     parent: 'game-container',
     backgroundColor: COLOUR_BG,
     scene: [BootScene, MenuScene, GameScene, GameOverScene],
