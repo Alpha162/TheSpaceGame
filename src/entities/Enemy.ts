@@ -156,18 +156,17 @@ export class Enemy {
         }
     }
 
-    /** Drone flocking: cohesion, separation, and projectile avoidance */
-    computeDroneFlocking(drones: Enemy[], projectiles: ProjectileInfo[]): void {
+    /** Flocking: cohesion, separation, alignment, and projectile avoidance */
+    computeFlocking(peers: Enemy[], projectiles: ProjectileInfo[]): void {
         this.flockFx = 0;
         this.flockFy = 0;
-        if (this.enemyType !== 'drone') return;
 
         let sepX = 0, sepY = 0;
         let cohX = 0, cohY = 0;
         let cohCount = 0;
         let alignVx = 0, alignVy = 0;
 
-        for (const other of drones) {
+        for (const other of peers) {
             if (other === this || !other.alive) continue;
             const dx = this.x - other.x;
             const dy = this.y - other.y;
@@ -281,7 +280,7 @@ export class Enemy {
         if (this.enemyType === 'scout') {
             this.x += this.evasionFx * this.speed * delta;
             this.y += this.evasionFy * this.speed * delta;
-        } else if (this.enemyType === 'drone') {
+        } else if (this.enemyType === 'drone' || this.enemyType === 'swarm') {
             this.x += this.flockFx * this.speed * delta;
             this.y += this.flockFy * this.speed * delta;
         }
