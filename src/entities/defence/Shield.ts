@@ -198,6 +198,11 @@ export class Shield extends GameNode implements IClusterShield {
             ? 0.2 + 0.3 * this.internalReserve
             : this.nodeState === 'brownout' ? 0.3 : 0.6;
 
+        // Energy bridges to cluster siblings (drawn first, behind bubble)
+        if (this.inCluster) {
+            this.drawClusterBridges(baseColour, alpha);
+        }
+
         // Organic bubble — multiple layers with sine-wave radius perturbation
         const segments = 64;
 
@@ -213,14 +218,23 @@ export class Shield extends GameNode implements IClusterShield {
             this.drawOrganicRing(segments, shimmerRadius, baseColour, alpha * 0.08, 1, Math.PI);
         }
 
-        // Ripple rings — concentric waves that pulse outward (ease-in: slow near center, fast at edge)
+        // Ripple rings — concentric waves that pulse outward
+        // When clustered, add a phase delay based on distance from cluster center
+        // so ripples appear to originate from the cluster barycenter
         const rippleCount = 3;
+        let clusterDelay = 0;
+        if (this.inCluster) {
+            const dcx = this.x - this.clusterCenterX;
+            const dcy = this.y - this.clusterCenterY;
+            clusterDelay = Math.sqrt(dcx * dcx + dcy * dcy) * 0.005;
+        }
         for (let i = 0; i < rippleCount; i++) {
-            const rippleLinearT = (this.ripplePhase + i / rippleCount) % 1;
+            const rippleLinearT = ((this.ripplePhase - clusterDelay) + i / rippleCount) % 1;
+            const safeT = rippleLinearT < 0 ? rippleLinearT + 1 : rippleLinearT;
             // Quadratic ease-in: starts slow, accelerates outward
-            const rippleT = rippleLinearT * rippleLinearT;
+            const rippleT = safeT * safeT;
             const rippleR = this.bubbleRadius * (0.15 + rippleT * 0.85);
-            const rippleAlpha = (1 - rippleLinearT) * alpha * 0.12;
+            const rippleAlpha = (1 - safeT) * alpha * 0.12;
             if (rippleAlpha > 0.01) {
                 this.drawOrganicRing(segments, rippleR, baseColour, rippleAlpha, 1, i * 1.5);
             }
@@ -231,6 +245,43 @@ export class Shield extends GameNode implements IClusterShield {
             const heatGlowRadius = this.bubbleRadius * 0.4 * this.heatLevel;
             this.bubbleGraphics.fillStyle(COLOUR_RED, this.heatLevel * 0.3);
             this.bubbleGraphics.fillCircle(0, 0, heatGlowRadius);
+        }
+    }
+
+    /** Draw energy bridge beams with traveling pulses to cluster siblings */
+    private drawClusterBridges(colour: number, alpha: number): void {
+        for (const sib of this.siblingShields) {
+            if (sib.bubbleRadius <= 0) continue;
+            // Only draw to siblings with a "higher" identity to avoid double-drawing
+            if (sib.x < this.x || (sib.x === this.x && sib.y < this.y)) continue;
+
+            // Bridge line in local coords (bubbleGraphics is positioned at this.x, this.y)
+            const dx = sib.x - this.x;
+            const dy = sib.y - this.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 1) continue;
+
+            // Soft beam
+            this.bubbleGraphics.lineStyle(3, colour, alpha * 0.06);
+            this.bubbleGraphics.beginPath();
+            this.bubbleGraphics.moveTo(0, 0);
+            this.bubbleGraphics.lineTo(dx, dy);
+            this.bubbleGraphics.strokePath();
+
+            // Traveling energy pulses along the beam
+            const pulseCount = 3;
+            for (let i = 0; i < pulseCount; i++) {
+                const t = ((this.ripplePhase * 0.8 + i / pulseCount) % 1);
+                const px = dx * t;
+                const py = dy * t;
+                // Pulse fades at endpoints
+                const edgeFade = Math.sin(t * Math.PI);
+                this.bubbleGraphics.fillStyle(colour, alpha * 0.15 * edgeFade);
+                this.bubbleGraphics.fillCircle(px, py, 2);
+                // Small glow around pulse
+                this.bubbleGraphics.fillStyle(colour, alpha * 0.04 * edgeFade);
+                this.bubbleGraphics.fillCircle(px, py, 5);
+            }
         }
     }
 
@@ -262,12 +313,12 @@ export class Shield extends GameNode implements IClusterShield {
                     let angleDiff = angle - sibAngle;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                    // Smooth lobe toward sibling (cos^4 falloff for soft shape)
+                    // Wide, soft lobe toward sibling (cos^2 for smooth merge)
                     const alignment = Math.max(0, Math.cos(angleDiff));
-                    const lobe = alignment * alignment * alignment * alignment;
+                    const lobe = alignment * alignment;
                     const overlap = this.bubbleRadius + sib.bubbleRadius - dist;
                     if (overlap > 0) {
-                        pull += overlap * 0.35 * lobe;
+                        pull += overlap * 0.5 * lobe;
                     }
                 }
                 // Also pull toward hub shield
@@ -281,10 +332,10 @@ export class Shield extends GameNode implements IClusterShield {
                         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                         const alignment = Math.max(0, Math.cos(angleDiff));
-                        const lobe = alignment * alignment * alignment * alignment;
+                        const lobe = alignment * alignment;
                         const overlap = this.bubbleRadius + this.hubRef.hubShieldRadius - dist;
                         if (overlap > 0) {
-                            pull += overlap * 0.35 * lobe;
+                            pull += overlap * 0.5 * lobe;
                         }
                     }
                 }
@@ -295,7 +346,6 @@ export class Shield extends GameNode implements IClusterShield {
             const py = Math.sin(angle) * r;
 
             // Check if this point (in world space) falls inside a sibling shield's bubble
-            // Use the sibling's deformed radius (base + pull allowance) for smoother merge
             const worldX = this.x + px;
             const worldY = this.y + py;
             let inside = false;
@@ -303,9 +353,7 @@ export class Shield extends GameNode implements IClusterShield {
                 if (sib.bubbleRadius <= 0) continue;
                 const dx = worldX - sib.x;
                 const dy = worldY - sib.y;
-                // Slightly shrink clip radius so the merge seam disappears
-                const clipR = sib.bubbleRadius * 0.92;
-                if (dx * dx + dy * dy < clipR * clipR) {
+                if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
                     inside = true;
                     break;
                 }
@@ -314,8 +362,7 @@ export class Shield extends GameNode implements IClusterShield {
             if (!inside && this.hubRef && this.hubRef.isHubShieldUp()) {
                 const dx = worldX - this.hubRef.x;
                 const dy = worldY - this.hubRef.y;
-                const clipR = this.hubRef.hubShieldRadius * 0.92;
-                if (dx * dx + dy * dy < clipR * clipR) {
+                if (dx * dx + dy * dy < this.hubRef.hubShieldRadius * this.hubRef.hubShieldRadius) {
                     inside = true;
                 }
             }

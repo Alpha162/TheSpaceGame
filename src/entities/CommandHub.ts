@@ -149,9 +149,16 @@ export class CommandHub extends GameNode implements IClusterShield {
             this.drawRing(segments, this.hubShieldRadius - 3, colour, alpha * 0.06, 1);
         }
 
-        // Ripple rings
+        // Ripple rings (with cluster delay from barycenter)
+        let clusterDelay = 0;
+        if (this.inCluster) {
+            const dcx = this.x - this.clusterCenterX;
+            const dcy = this.y - this.clusterCenterY;
+            clusterDelay = Math.sqrt(dcx * dcx + dcy * dcy) * 0.005;
+        }
         for (let i = 0; i < 3; i++) {
-            const t = (this.ripplePhase + i / 3) % 1;
+            const rawT = ((this.ripplePhase - clusterDelay) + i / 3) % 1;
+            const t = rawT < 0 ? rawT + 1 : rawT;
             const r = this.hubShieldRadius * (0.15 + t * t * 0.85);
             const a = (1 - t) * alpha * 0.1;
             if (a > 0.01) {
@@ -190,10 +197,10 @@ export class CommandHub extends GameNode implements IClusterShield {
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                     const alignment = Math.max(0, Math.cos(angleDiff));
-                    const lobe = alignment * alignment * alignment * alignment;
+                    const lobe = alignment * alignment;
                     const overlap = this.hubShieldRadius + sib.bubbleRadius - dist;
                     if (overlap > 0) {
-                        pull += overlap * 0.35 * lobe;
+                        pull += overlap * 0.5 * lobe;
                     }
                 }
             }
@@ -210,8 +217,7 @@ export class CommandHub extends GameNode implements IClusterShield {
                 if (sib.bubbleRadius <= 0) continue;
                 const dx = worldX - sib.x;
                 const dy = worldY - sib.y;
-                const clipR = sib.bubbleRadius * 0.92;
-                if (dx * dx + dy * dy < clipR * clipR) {
+                if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
                     inside = true;
                     break;
                 }
