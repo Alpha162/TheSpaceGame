@@ -198,9 +198,10 @@ export class CommandHub extends GameNode implements IClusterShield {
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                     const alignment = Math.max(0, Math.cos(angleDiff));
                     const lobe = alignment * alignment;
-                    const overlap = this.hubShieldRadius + sib.bubbleRadius - dist;
-                    if (overlap > 0) {
-                        pull += overlap * 0.5 * lobe;
+                    const gap = dist - this.hubShieldRadius - sib.bubbleRadius;
+                    const reach = gap < 20 ? (20 - gap) : 0;
+                    if (reach > 0) {
+                        pull += reach * 0.6 * lobe;
                     }
                 }
             }

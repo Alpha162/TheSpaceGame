@@ -65,7 +65,7 @@ export const SHIELD_RESERVE_MAX = 1.0;   // internal energy reserve (0..1)
 export const SHIELD_RESERVE_DRAIN_RATE = 0.00015;  // drain per ms (~7s of reserve idle)
 export const SHIELD_RESERVE_FIRE_MULTIPLIER = 8;   // drains 8x faster under fire
 export const SHIELD_RESERVE_CHARGE_RATE = 0.0004;  // charge per ms (~2.5s to fill when online)
-export const SHIELD_CLUSTER_OVERLAP_MARGIN = 5;    // px of overlap forgiveness for cluster detection
+export const SHIELD_CLUSTER_OVERLAP_MARGIN = 20;   // px of overlap forgiveness for cluster detection
 
 // Capacitor constants
 export const CAPACITOR_HEALTH = 60;

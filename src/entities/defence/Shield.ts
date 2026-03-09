@@ -249,20 +249,28 @@ export class Shield extends GameNode implements IClusterShield {
     }
 
     /** Draw energy bridge beams with traveling pulses to cluster siblings */
-    private drawClusterBridges(colour: number, alpha: number): void {
+    private drawClusterBridges(colour: number, _alpha: number): void {
         for (const sib of this.siblingShields) {
-            if (sib.bubbleRadius <= 0) continue;
-            // Only draw to siblings with a "higher" identity to avoid double-drawing
-            if (sib.x < this.x || (sib.x === this.x && sib.y < this.y)) continue;
-
-            // Bridge line in local coords (bubbleGraphics is positioned at this.x, this.y)
+            if (sib.bubbleRadius <= 0 || !sib.inCluster) continue;
+            // Only draw to siblings that overlap (same cluster) and avoid double-drawing
             const dx = sib.x - this.x;
             const dy = sib.y - this.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < 1) continue;
+            // Only draw between shields that actually overlap
+            if (dist > this.bubbleRadius + sib.bubbleRadius + 10) continue;
+            // Avoid double-drawing: only draw to "higher" sibling
+            if (sib.x < this.x || (sib.x === this.x && sib.y < this.y)) continue;
 
-            // Soft beam
-            this.bubbleGraphics.lineStyle(3, colour, alpha * 0.06);
+            // Soft glowing beam (in local coords since bubbleGraphics is at this.x, this.y)
+            this.bubbleGraphics.lineStyle(4, colour, 0.12);
+            this.bubbleGraphics.beginPath();
+            this.bubbleGraphics.moveTo(0, 0);
+            this.bubbleGraphics.lineTo(dx, dy);
+            this.bubbleGraphics.strokePath();
+
+            // Wider glow layer
+            this.bubbleGraphics.lineStyle(10, colour, 0.04);
             this.bubbleGraphics.beginPath();
             this.bubbleGraphics.moveTo(0, 0);
             this.bubbleGraphics.lineTo(dx, dy);
@@ -276,11 +284,11 @@ export class Shield extends GameNode implements IClusterShield {
                 const py = dy * t;
                 // Pulse fades at endpoints
                 const edgeFade = Math.sin(t * Math.PI);
-                this.bubbleGraphics.fillStyle(colour, alpha * 0.15 * edgeFade);
-                this.bubbleGraphics.fillCircle(px, py, 2);
-                // Small glow around pulse
-                this.bubbleGraphics.fillStyle(colour, alpha * 0.04 * edgeFade);
-                this.bubbleGraphics.fillCircle(px, py, 5);
+                this.bubbleGraphics.fillStyle(colour, 0.35 * edgeFade);
+                this.bubbleGraphics.fillCircle(px, py, 3);
+                // Soft glow around pulse
+                this.bubbleGraphics.fillStyle(colour, 0.1 * edgeFade);
+                this.bubbleGraphics.fillCircle(px, py, 7);
             }
         }
     }
@@ -316,9 +324,11 @@ export class Shield extends GameNode implements IClusterShield {
                     // Wide, soft lobe toward sibling (cos^2 for smooth merge)
                     const alignment = Math.max(0, Math.cos(angleDiff));
                     const lobe = alignment * alignment;
-                    const overlap = this.bubbleRadius + sib.bubbleRadius - dist;
-                    if (overlap > 0) {
-                        pull += overlap * 0.5 * lobe;
+                    // Pull extends even when shields don't quite overlap (reach toward each other)
+                    const gap = dist - this.bubbleRadius - sib.bubbleRadius;
+                    const reach = gap < 20 ? (20 - gap) : 0;
+                    if (reach > 0) {
+                        pull += reach * 0.6 * lobe;
                     }
                 }
                 // Also pull toward hub shield
@@ -333,9 +343,10 @@ export class Shield extends GameNode implements IClusterShield {
                         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
                         const alignment = Math.max(0, Math.cos(angleDiff));
                         const lobe = alignment * alignment;
-                        const overlap = this.bubbleRadius + this.hubRef.hubShieldRadius - dist;
-                        if (overlap > 0) {
-                            pull += overlap * 0.5 * lobe;
+                        const gap = dist - this.bubbleRadius - this.hubRef.hubShieldRadius;
+                        const reach = gap < 20 ? (20 - gap) : 0;
+                        if (reach > 0) {
+                            pull += reach * 0.6 * lobe;
                         }
                     }
                 }
