@@ -173,11 +173,18 @@ export class Enemy {
             const dy = this.y - other.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Separation — push away from nearby drones (soft, wider radius)
-            if (dist < 30 && dist > 0.1) {
-                const strength = (30 - dist) / 30;
-                sepX += (dx / dist) * strength;
-                sepY += (dy / dist) * strength;
+            // Separation — push away from nearby drones
+            if (dist < 30) {
+                if (dist < 0.1) {
+                    // Overlapping: push in random direction to break degeneracy
+                    const angle = Math.random() * Math.PI * 2;
+                    sepX += Math.cos(angle);
+                    sepY += Math.sin(angle);
+                } else {
+                    const strength = (30 - dist) / 30;
+                    sepX += (dx / dist) * strength;
+                    sepY += (dy / dist) * strength;
+                }
             }
 
             // Cohesion + alignment with nearby drones
@@ -225,8 +232,8 @@ export class Enemy {
             avoidY += (dy / dist) * strength;
         }
 
-        this.flockFx = sepX * 0.5 + cohX * 0.4 + alignVx * 0.25 + avoidX * 0.8;
-        this.flockFy = sepY * 0.5 + cohY * 0.4 + alignVy * 0.25 + avoidY * 0.8;
+        this.flockFx = sepX * 1.2 + cohX * 0.3 + alignVx * 0.2 + avoidX * 0.8;
+        this.flockFy = sepY * 1.2 + cohY * 0.3 + alignVy * 0.2 + avoidY * 0.8;
     }
 
     update(delta: number): void {
