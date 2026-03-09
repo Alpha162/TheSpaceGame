@@ -29,6 +29,8 @@ export class CommandHub extends GameNode implements IClusterShield {
     clusterManager: ShieldClusterManager | null = null;
     inCluster = false;
     clusterSyncPhase = 0;
+    clusterCenterX = 0;
+    clusterCenterY = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, COMMAND_HUB_HEALTH, 0, COMMAND_HUB_RADIUS);
@@ -173,7 +175,30 @@ export class CommandHub extends GameNode implements IClusterShield {
             const wobble = 1 +
                 Math.sin(angle * 3 + this.ripplePhase * 2) * 0.02 +
                 Math.sin(angle * 7 - this.ripplePhase * 1.3) * 0.01;
-            const r = radius * wobble;
+
+            // Cluster deformation: pull toward nearby player shields
+            let pull = 0;
+            if (this.inCluster) {
+                for (const sib of this.siblingShields) {
+                    if (sib.bubbleRadius <= 0) continue;
+                    const dx = sib.x - this.x;
+                    const dy = sib.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 1) continue;
+                    const sibAngle = Math.atan2(dy, dx);
+                    let angleDiff = angle - sibAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    const alignment = Math.max(0, Math.cos(angleDiff));
+                    const lobe = alignment * alignment * alignment * alignment;
+                    const overlap = this.hubShieldRadius + sib.bubbleRadius - dist;
+                    if (overlap > 0) {
+                        pull += overlap * 0.35 * lobe;
+                    }
+                }
+            }
+
+            const r = radius * wobble + pull;
             const px = Math.cos(angle) * r;
             const py = Math.sin(angle) * r;
 
@@ -185,7 +210,8 @@ export class CommandHub extends GameNode implements IClusterShield {
                 if (sib.bubbleRadius <= 0) continue;
                 const dx = worldX - sib.x;
                 const dy = worldY - sib.y;
-                if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
+                const clipR = sib.bubbleRadius * 0.92;
+                if (dx * dx + dy * dy < clipR * clipR) {
                     inside = true;
                     break;
                 }

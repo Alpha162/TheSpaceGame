@@ -29,6 +29,8 @@ export class Shield extends GameNode implements IClusterShield {
     clusterManager: ShieldClusterManager | null = null;
     inCluster = false;
     clusterSyncPhase = 0;
+    clusterCenterX = 0;
+    clusterCenterY = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
@@ -247,11 +249,53 @@ export class Shield extends GameNode implements IClusterShield {
                 Math.sin(angle * 7 - this.ripplePhase * 1.3 + phaseOffset) * 0.01 +
                 Math.sin(angle * 5 + this.ripplePhase * 3.7) * 0.015;
 
-            const r = radius * wobble;
+            // Cluster deformation: pull bubble edge toward nearby siblings (merging drops)
+            let pull = 0;
+            if (this.inCluster) {
+                for (const sib of this.siblingShields) {
+                    if (sib.bubbleRadius <= 0) continue;
+                    const dx = sib.x - this.x;
+                    const dy = sib.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 1) continue;
+                    const sibAngle = Math.atan2(dy, dx);
+                    let angleDiff = angle - sibAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    // Smooth lobe toward sibling (cos^4 falloff for soft shape)
+                    const alignment = Math.max(0, Math.cos(angleDiff));
+                    const lobe = alignment * alignment * alignment * alignment;
+                    const overlap = this.bubbleRadius + sib.bubbleRadius - dist;
+                    if (overlap > 0) {
+                        pull += overlap * 0.35 * lobe;
+                    }
+                }
+                // Also pull toward hub shield
+                if (this.hubRef && this.hubRef.isHubShieldUp()) {
+                    const dx = this.hubRef.x - this.x;
+                    const dy = this.hubRef.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 1) {
+                        const sibAngle = Math.atan2(dy, dx);
+                        let angleDiff = angle - sibAngle;
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                        const alignment = Math.max(0, Math.cos(angleDiff));
+                        const lobe = alignment * alignment * alignment * alignment;
+                        const overlap = this.bubbleRadius + this.hubRef.hubShieldRadius - dist;
+                        if (overlap > 0) {
+                            pull += overlap * 0.35 * lobe;
+                        }
+                    }
+                }
+            }
+
+            const r = radius * wobble + pull;
             const px = Math.cos(angle) * r;
             const py = Math.sin(angle) * r;
 
             // Check if this point (in world space) falls inside a sibling shield's bubble
+            // Use the sibling's deformed radius (base + pull allowance) for smoother merge
             const worldX = this.x + px;
             const worldY = this.y + py;
             let inside = false;
@@ -259,7 +303,9 @@ export class Shield extends GameNode implements IClusterShield {
                 if (sib.bubbleRadius <= 0) continue;
                 const dx = worldX - sib.x;
                 const dy = worldY - sib.y;
-                if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
+                // Slightly shrink clip radius so the merge seam disappears
+                const clipR = sib.bubbleRadius * 0.92;
+                if (dx * dx + dy * dy < clipR * clipR) {
                     inside = true;
                     break;
                 }
@@ -268,7 +314,8 @@ export class Shield extends GameNode implements IClusterShield {
             if (!inside && this.hubRef && this.hubRef.isHubShieldUp()) {
                 const dx = worldX - this.hubRef.x;
                 const dy = worldY - this.hubRef.y;
-                if (dx * dx + dy * dy < this.hubRef.hubShieldRadius * this.hubRef.hubShieldRadius) {
+                const clipR = this.hubRef.hubShieldRadius * 0.92;
+                if (dx * dx + dy * dy < clipR * clipR) {
                     inside = true;
                 }
             }
