@@ -3,7 +3,7 @@ import {
     WORLD_WIDTH, WORLD_HEIGHT,
     CAMERA_SCROLL_SPEED,
     STAR_LAYER_COUNT, STARS_PER_LAYER, STAR_SIZES, STAR_ALPHAS,
-    COLOUR_WHITE,
+    COLOUR_WHITE, COLOUR_PANEL, COLOUR_PANEL_BORDER,
     CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP,
     ASTEROID_COUNT, ASTEROID_MIN_HUB_DIST, ASTEROID_RADIUS
 } from '../utils/Constants';
@@ -32,6 +32,16 @@ export class GameScene extends Phaser.Scene {
     asteroids: MineralAsteroid[] = [];
     starLayers: Phaser.GameObjects.Graphics[] = [];
     private uiObjects: Set<Phaser.GameObjects.GameObject> = new Set();
+    private isDragging = false;
+    private dragStartX = 0;
+    private dragStartY = 0;
+    private dragCamStartX = 0;
+    private dragCamStartY = 0;
+    private isPaused = false;
+    private pauseOverlay!: Phaser.GameObjects.Graphics;
+    private pauseText!: Phaser.GameObjects.Text;
+    private pauseButton!: Phaser.GameObjects.Text;
+    private uiCam!: Phaser.Cameras.Scene2D.Camera;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -91,18 +101,18 @@ export class GameScene extends Phaser.Scene {
         ];
         this.uiObjects = new Set(uiObjectsList);
         this.cameras.main.ignore(uiObjectsList);
-        const uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-        uiCam.setScroll(0, 0);
+        this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.uiCam.setScroll(0, 0);
         // UI camera only renders UI objects – ignore everything else
         this.children.each((child) => {
             if (!this.uiObjects.has(child)) {
-                uiCam.ignore(child);
+                this.uiCam.ignore(child);
             }
         });
         // Auto-ignore new world objects on UI camera
         this.events.on('addedtoscene', (child: Phaser.GameObjects.GameObject) => {
             if (!this.uiObjects.has(child)) {
-                uiCam.ignore(child);
+                this.uiCam.ignore(child);
             }
         });
 
@@ -125,14 +135,131 @@ export class GameScene extends Phaser.Scene {
                 cam.zoom = Math.min(CAMERA_ZOOM_MAX, cam.zoom + CAMERA_ZOOM_STEP);
             }
         });
+
+        // Middle-mouse or right-mouse drag to pan camera
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (pointer.middleButtonDown()) {
+                this.startDrag(pointer);
+            }
+        });
+        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+            if (this.isDragging) {
+                const cam = this.cameras.main;
+                const dx = (this.dragStartX - pointer.x) / cam.zoom;
+                const dy = (this.dragStartY - pointer.y) / cam.zoom;
+                cam.scrollX = this.dragCamStartX + dx;
+                cam.scrollY = this.dragCamStartY + dy;
+            }
+        });
+        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+            if (this.isDragging && !pointer.middleButtonDown()) {
+                this.isDragging = false;
+            }
+        });
+
+        // Pause button (top-right)
+        this.createPauseButton();
+
+        // P key to toggle pause
+        if (this.input.keyboard) {
+            this.input.keyboard.on('keydown-P', () => {
+                this.togglePause();
+            });
+        }
+    }
+
+    private startDrag(pointer: Phaser.Input.Pointer): void {
+        this.isDragging = true;
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
+        this.dragCamStartX = this.cameras.main.scrollX;
+        this.dragCamStartY = this.cameras.main.scrollY;
+    }
+
+    private createPauseButton(): void {
+        const viewW = this.scale.width;
+
+        // Pause button
+        const btnBg = this.add.graphics();
+        btnBg.setScrollFactor(0).setDepth(200);
+        btnBg.fillStyle(COLOUR_PANEL, 0.85);
+        btnBg.fillRoundedRect(viewW - 80, 4, 76, 28, 4);
+        btnBg.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
+        btnBg.strokeRoundedRect(viewW - 80, 4, 76, 28, 4);
+
+        this.pauseButton = this.add.text(viewW - 42, 18, 'PAUSE', {
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: '#ffffff'
+        }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
+
+        const pauseZone = this.add.zone(viewW - 42, 18, 76, 28)
+            .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
+
+        pauseZone.on('pointerdown', () => this.togglePause());
+        pauseZone.on('pointerover', () => this.pauseButton.setColor('#00e5ff'));
+        pauseZone.on('pointerout', () => this.pauseButton.setColor('#ffffff'));
+
+        // Pause overlay (hidden by default)
+        this.pauseOverlay = this.add.graphics();
+        this.pauseOverlay.setScrollFactor(0).setDepth(300);
+        this.pauseOverlay.setVisible(false);
+
+        this.pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'PAUSED', {
+            fontFamily: 'monospace',
+            fontSize: '48px',
+            color: '#00e5ff',
+            fontStyle: 'bold'
+        }).setScrollFactor(0).setDepth(301).setOrigin(0.5).setVisible(false);
+
+        // Register pause UI objects with the camera system
+        const pauseUiObjects = [btnBg, this.pauseButton, pauseZone, this.pauseOverlay, this.pauseText];
+        for (const obj of pauseUiObjects) {
+            this.uiObjects.add(obj);
+            this.cameras.main.ignore(obj);
+            // The addedtoscene handler already told uiCam to ignore these
+            // (they weren't in uiObjects yet when added), so undo that
+        }
+        // Re-add to uiCam visibility by removing the ignore
+        // Phaser doesn't have an "un-ignore" — simplest fix: recreate uiCam
+        this.cameras.remove(this.uiCam);
+        this.uiCam = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+        this.uiCam.setScroll(0, 0);
+        this.children.each((child) => {
+            if (!this.uiObjects.has(child)) {
+                this.uiCam.ignore(child);
+            }
+        });
+    }
+
+    private togglePause(): void {
+        this.isPaused = !this.isPaused;
+
+        if (this.isPaused) {
+            this.pauseOverlay.clear();
+            this.pauseOverlay.fillStyle(0x000000, 0.5);
+            this.pauseOverlay.fillRect(0, 0, this.scale.width, this.scale.height);
+            this.pauseOverlay.setVisible(true);
+            this.pauseText.setVisible(true);
+            this.pauseButton.setText('RESUME');
+        } else {
+            this.pauseOverlay.setVisible(false);
+            this.pauseText.setVisible(false);
+            this.pauseButton.setText('PAUSE');
+        }
     }
 
     update(_time: number, delta: number): void {
+        // Camera movement always works, even when paused
         this.handleCameraMovement();
-        this.buildSystem.update();
-        this.combatSystem.update(delta);
-        this.mineralManager.update(delta);
-        this.powerNetwork.update(delta);
+
+        if (!this.isPaused) {
+            this.buildSystem.update();
+            this.combatSystem.update(delta);
+            this.mineralManager.update(delta);
+            this.powerNetwork.update(delta);
+        }
+
         this.hud.update();
         this.spawnPanel.update();
     }

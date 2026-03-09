@@ -227,15 +227,17 @@ export class Missile extends GameNode {
         if (this.selected) {
             this.graphics.lineStyle(2, COLOUR_SELECTION, 0.8);
             this.graphics.strokeCircle(0, 0, this.nodeRadius + 4);
-            this.rangeGraphics.clear();
-            this.rangeGraphics.x = this.x;
-            this.rangeGraphics.y = this.y;
-            this.rangeGraphics.lineStyle(1, COLOUR_AMBER, 0.15);
-            this.rangeGraphics.strokeCircle(0, 0, MISSILE_RANGE);
-            // Show AoE radius
-            this.rangeGraphics.lineStyle(1, COLOUR_RED, 0.1);
-            this.rangeGraphics.strokeCircle(0, 0, MISSILE_AOE_RADIUS);
-        } else {
+            if (this.rangeGraphics) {
+                this.rangeGraphics.clear();
+                this.rangeGraphics.x = this.x;
+                this.rangeGraphics.y = this.y;
+                this.rangeGraphics.lineStyle(1, COLOUR_AMBER, 0.15);
+                this.rangeGraphics.strokeCircle(0, 0, MISSILE_RANGE);
+                // Show AoE radius
+                this.rangeGraphics.lineStyle(1, COLOUR_RED, 0.1);
+                this.rangeGraphics.strokeCircle(0, 0, MISSILE_AOE_RADIUS);
+            }
+        } else if (this.rangeGraphics) {
             this.rangeGraphics.clear();
         }
 

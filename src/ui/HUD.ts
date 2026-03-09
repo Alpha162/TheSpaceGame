@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
 import {
-    VIEWPORT_WIDTH, COLOUR_PANEL, COLOUR_PANEL_BORDER,
+    COLOUR_PANEL, COLOUR_PANEL_BORDER,
     COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED, COLOUR_PURPLE
 } from '../utils/Constants';
 
@@ -23,14 +23,16 @@ export class HUD {
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
 
+        const viewW = scene.scale.width;
+
         // Background panel (taller to fit two rows)
         this.bgGraphics = scene.add.graphics();
         this.bgGraphics.setScrollFactor(0);
         this.bgGraphics.setDepth(200);
         this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
-        this.bgGraphics.fillRoundedRect(4, 4, VIEWPORT_WIDTH - 8, 52, 4);
+        this.bgGraphics.fillRoundedRect(4, 4, viewW - 8, 52, 4);
         this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
-        this.bgGraphics.strokeRoundedRect(4, 4, VIEWPORT_WIDTH - 8, 52, 4);
+        this.bgGraphics.strokeRoundedRect(4, 4, viewW - 8, 52, 4);
 
         // Row 1: Minerals + Power generation/demand
         this.mineralText = scene.add.text(16, 10, '', {

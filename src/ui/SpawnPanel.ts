@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { CombatSystem } from '../systems/CombatSystem';
 import {
-    VIEWPORT_WIDTH, VIEWPORT_HEIGHT,
     COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_RED
 } from '../utils/Constants';
 
@@ -15,8 +14,8 @@ export class SpawnPanel {
     constructor(scene: Phaser.Scene, combatSystem: CombatSystem) {
         this.combatSystem = combatSystem;
 
-        const panelX = VIEWPORT_WIDTH - 174;
-        const panelY = VIEWPORT_HEIGHT - 70;
+        const panelX = scene.scale.width - 174;
+        const panelY = scene.scale.height - 70;
         const panelW = 170;
         const panelH = 64;
 

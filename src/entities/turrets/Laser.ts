@@ -152,12 +152,14 @@ export class Laser extends GameNode {
         if (this.selected) {
             this.graphics.lineStyle(2, COLOUR_SELECTION, 0.8);
             this.graphics.strokeCircle(0, 0, this.nodeRadius + 4);
-            this.rangeGraphics.clear();
-            this.rangeGraphics.x = this.x;
-            this.rangeGraphics.y = this.y;
-            this.rangeGraphics.lineStyle(1, COLOUR_CYAN, 0.15);
-            this.rangeGraphics.strokeCircle(0, 0, LASER_RANGE);
-        } else {
+            if (this.rangeGraphics) {
+                this.rangeGraphics.clear();
+                this.rangeGraphics.x = this.x;
+                this.rangeGraphics.y = this.y;
+                this.rangeGraphics.lineStyle(1, COLOUR_CYAN, 0.15);
+                this.rangeGraphics.strokeCircle(0, 0, LASER_RANGE);
+            }
+        } else if (this.rangeGraphics) {
             this.rangeGraphics.clear();
         }
 

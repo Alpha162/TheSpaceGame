@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { VIEWPORT_WIDTH, VIEWPORT_HEIGHT, COLOUR_WHITE, COLOUR_RED } from '../utils/Constants';
+import { COLOUR_WHITE, COLOUR_RED } from '../utils/Constants';
 
 export class GameOverScene extends Phaser.Scene {
     constructor() {
@@ -7,14 +7,14 @@ export class GameOverScene extends Phaser.Scene {
     }
 
     create(): void {
-        const cx = VIEWPORT_WIDTH / 2;
-        const cy = VIEWPORT_HEIGHT / 2;
+        const cx = this.scale.width / 2;
+        const cy = this.scale.height / 2;
 
         // Starfield background
         const gfx = this.add.graphics();
         for (let i = 0; i < 100; i++) {
-            const x = Math.random() * VIEWPORT_WIDTH;
-            const y = Math.random() * VIEWPORT_HEIGHT;
+            const x = Math.random() * this.scale.width;
+            const y = Math.random() * this.scale.height;
             gfx.fillStyle(COLOUR_WHITE, 0.15 + Math.random() * 0.3);
             gfx.fillCircle(x, y, 0.5 + Math.random());
         }

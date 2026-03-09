@@ -22,8 +22,7 @@ import {
     MISSILE_COST, MISSILE_RADIUS, MISSILE_POWER,
     MINER_COST, MINER_RADIUS, MINER_POWER, MINER_RANGE,
     UPGRADE_COST_FRACTION,
-    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER,
-    VIEWPORT_WIDTH, VIEWPORT_HEIGHT
+    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
@@ -131,15 +130,17 @@ export class BuildSystem {
     private isPointerOverUI(pointer: Phaser.Input.Pointer): boolean {
         const x = pointer.x;
         const y = pointer.y;
+        const viewW = this.scene.scale.width;
+        const viewH = this.scene.scale.height;
 
         // HUD top bar
-        if (x >= 4 && x <= VIEWPORT_WIDTH - 4 && y >= 4 && y <= 56) return true;
+        if (x >= 4 && x <= viewW - 4 && y >= 4 && y <= 56) return true;
 
         // Build menu bottom-left panel (wider now with 7 buttons)
-        if (x >= 4 && x <= 640 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
+        if (x >= 4 && x <= 640 && y >= viewH - 70 && y <= viewH - 6) return true;
 
         // Spawn panel bottom-right
-        if (x >= VIEWPORT_WIDTH - 174 && x <= VIEWPORT_WIDTH - 4 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
+        if (x >= viewW - 174 && x <= viewW - 4 && y >= viewH - 70 && y <= viewH - 6) return true;
 
         return false;
     }

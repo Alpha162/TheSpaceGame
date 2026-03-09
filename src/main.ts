@@ -3,12 +3,12 @@ import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { GameOverScene } from './scenes/GameOverScene';
-import { VIEWPORT_WIDTH, VIEWPORT_HEIGHT, COLOUR_BG } from './utils/Constants';
+import { COLOUR_BG } from './utils/Constants';
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: VIEWPORT_WIDTH,
-    height: VIEWPORT_HEIGHT,
+    width: window.innerWidth,
+    height: window.innerHeight,
     parent: 'game-container',
     backgroundColor: COLOUR_BG,
     scene: [BootScene, MenuScene, GameScene, GameOverScene],

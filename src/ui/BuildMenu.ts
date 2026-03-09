@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BuildSystem, BUILDABLE_CONFIGS, BuildableType } from '../systems/BuildSystem';
-import { VIEWPORT_HEIGHT, COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_CYAN } from '../utils/Constants';
+import { COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_CYAN } from '../utils/Constants';
 
 interface MenuButton {
     bg: Phaser.GameObjects.Graphics;
@@ -32,7 +32,7 @@ export class BuildMenu {
         this.bgGraphics.setScrollFactor(0);
         this.bgGraphics.setDepth(200);
 
-        const panelY = VIEWPORT_HEIGHT - 70;
+        const panelY = scene.scale.height - 70;
         const btnW = 84;
         const gap = 6;
         const panelW = BUILD_ORDER.length * (btnW + gap) + gap;
