@@ -23,6 +23,7 @@ import {
     MINER_COST, MINER_RADIUS, MINER_POWER, MINER_RANGE,
     UPGRADE_COST_FRACTION,
     COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER,
+    SHIELD_BUBBLE_MAX_RADIUS, SHIELD_CLUSTER_OVERLAP_MARGIN,
     UI_SCALE
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
@@ -59,6 +60,7 @@ export class BuildSystem {
     private combatSystem: CombatSystem | null = null;
     private mineralManager: MineralManager | null = null;
     private asteroids: MineralAsteroid[] = [];
+    private shieldInfoText: Phaser.GameObjects.Text;
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.scene = scene;
@@ -72,6 +74,14 @@ export class BuildSystem {
         this.rangeGraphics = scene.add.graphics();
         this.rangeGraphics.setDepth(99);
         this.rangeGraphics.setVisible(false);
+
+        this.shieldInfoText = scene.add.text(0, 0, '', {
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: '#00e5ff',
+            backgroundColor: '#1a1a2e',
+            padding: { x: 4, y: 2 }
+        }).setDepth(101).setVisible(false).setOrigin(0.5, 0);
 
         // Click to place or select (blocked over UI)
         scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -172,6 +182,7 @@ export class BuildSystem {
         this.ghostGraphics.clear();
         this.rangeGraphics.setVisible(false);
         this.rangeGraphics.clear();
+        this.shieldInfoText.setVisible(false);
     }
 
     isBuilding(): boolean {
@@ -299,6 +310,13 @@ export class BuildSystem {
         this.rangeGraphics.lineStyle(1, COLOUR_GREY, 0.2);
         this.rangeGraphics.strokeCircle(wx, wy, MAX_POWER_LINK_LENGTH);
 
+        // Shield preview: show expected bubble and cluster info
+        if (this.activeBuildType === 'shield') {
+            this.drawShieldPreview(wx, wy, colour);
+        } else {
+            this.shieldInfoText.setVisible(false);
+        }
+
         // For miners, show mining range and highlight nearby asteroids
         if (this.activeBuildType === 'miner') {
             this.rangeGraphics.lineStyle(1, COLOUR_AMBER, 0.2);
@@ -330,6 +348,116 @@ export class BuildSystem {
                 this.rangeGraphics.strokePath();
             }
         }
+    }
+
+    private drawShieldPreview(wx: number, wy: number, colour: number): void {
+        const bubbleR = SHIELD_BUBBLE_MAX_RADIUS;
+
+        // Find existing shields that would cluster with this one
+        const clusterShields: { x: number; y: number; r: number }[] = [];
+        for (const node of this.powerNetwork.getAllNodes()) {
+            if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
+                const dist = distanceBetween(wx, wy, node.x, node.y);
+                if (dist < bubbleR + node.bubbleRadius + SHIELD_CLUSTER_OVERLAP_MARGIN) {
+                    clusterShields.push({ x: node.x, y: node.y, r: node.bubbleRadius });
+                }
+            }
+        }
+        // Also check hub shield
+        const hub = this.powerNetwork.getHub();
+        if (hub && hub.isHubShieldUp()) {
+            const dist = distanceBetween(wx, wy, hub.x, hub.y);
+            if (dist < bubbleR + hub.hubShieldRadius + SHIELD_CLUSTER_OVERLAP_MARGIN) {
+                clusterShields.push({ x: hub.x, y: hub.y, r: hub.hubShieldRadius });
+            }
+        }
+
+        const willCluster = clusterShields.length > 0;
+
+        // Draw preview bubble with organic ring (deformed if clustering)
+        const segments = 48;
+        this.ghostGraphics.lineStyle(1.5, colour, 0.25);
+        this.ghostGraphics.beginPath();
+        for (let i = 0; i <= segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+
+            // Deformation toward cluster siblings
+            let pull = 0;
+            if (willCluster) {
+                for (const sib of clusterShields) {
+                    const dx = sib.x - wx;
+                    const dy = sib.y - wy;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 1) continue;
+                    const sibAngle = Math.atan2(dy, dx);
+                    let angleDiff = angle - sibAngle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    const alignment = Math.max(0, Math.cos(angleDiff));
+                    const lobe = alignment * alignment;
+                    const gap = dist - bubbleR - sib.r;
+                    const reach = gap < 20 ? (20 - gap) : 0;
+                    if (reach > 0) {
+                        pull += reach * 0.6 * lobe;
+                    }
+                }
+            }
+
+            const r = bubbleR + pull;
+            const px = wx + Math.cos(angle) * r;
+            const py = wy + Math.sin(angle) * r;
+
+            // Clip inside existing sibling bubbles
+            let inside = false;
+            for (const sib of clusterShields) {
+                const dx = px - sib.x;
+                const dy = py - sib.y;
+                if (dx * dx + dy * dy < sib.r * sib.r) {
+                    inside = true;
+                    break;
+                }
+            }
+
+            if (inside) {
+                this.ghostGraphics.strokePath();
+                this.ghostGraphics.beginPath();
+            } else if (i === 0) {
+                this.ghostGraphics.moveTo(px, py);
+            } else {
+                this.ghostGraphics.lineTo(px, py);
+            }
+        }
+        this.ghostGraphics.strokePath();
+
+        // Fill preview bubble (very faint)
+        this.ghostGraphics.fillStyle(colour, 0.04);
+        this.ghostGraphics.fillCircle(wx, wy, bubbleR);
+
+        // Draw bridge lines to cluster siblings
+        if (willCluster) {
+            for (const sib of clusterShields) {
+                this.ghostGraphics.lineStyle(2, colour, 0.15);
+                this.ghostGraphics.beginPath();
+                this.ghostGraphics.moveTo(wx, wy);
+                this.ghostGraphics.lineTo(sib.x, sib.y);
+                this.ghostGraphics.strokePath();
+            }
+        }
+
+        // Info text
+        const clusterSize = clusterShields.length + 1; // including this new shield
+        if (willCluster) {
+            const totalMembers = clusterSize;
+            // Heat resistance scales with cluster size (damage split across members)
+            const heatResist = Math.round((1 - 1 / totalMembers) * 100);
+            this.shieldInfoText.setText(`Cluster: ${totalMembers} shields | ${heatResist}% heat shared`);
+            this.shieldInfoText.setColor('#00e5ff');
+        } else {
+            this.shieldInfoText.setText('Solo shield');
+            this.shieldInfoText.setColor('#888888');
+        }
+        this.shieldInfoText.setPosition(wx, wy - bubbleR - 14);
+        this.shieldInfoText.setVisible(true);
     }
 
     private validatePlacement(x: number, y: number, config: BuildableConfig): boolean {
