@@ -22,6 +22,8 @@ export class Shield extends GameNode {
     private bubbleGraphics: Phaser.GameObjects.Graphics;
     /** Other active shields for merged rendering */
     siblingShields: Shield[] = [];
+    /** Reference to the hub for merged rendering with its built-in shield */
+    hubRef: import('../CommandHub').CommandHub | null = null;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
@@ -231,6 +233,14 @@ export class Shield extends GameNode {
                 if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
                     inside = true;
                     break;
+                }
+            }
+            // Also check the hub's built-in shield
+            if (!inside && this.hubRef && this.hubRef.isHubShieldUp()) {
+                const dx = worldX - this.hubRef.x;
+                const dy = worldY - this.hubRef.y;
+                if (dx * dx + dy * dy < this.hubRef.hubShieldRadius * this.hubRef.hubShieldRadius) {
+                    inside = true;
                 }
             }
             points.push({ px, py, inside });

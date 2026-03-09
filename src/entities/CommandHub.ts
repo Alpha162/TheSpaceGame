@@ -7,6 +7,7 @@ import {
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
 import { hexagonPoints } from '../utils/Helpers';
+import type { Shield } from './defence/Shield';
 
 export class CommandHub extends GameNode {
     powerGeneration: number;
@@ -21,6 +22,8 @@ export class CommandHub extends GameNode {
     private hubShieldCooldown = 0;
     private shieldGraphics: Phaser.GameObjects.Graphics;
     private ripplePhase = 0;
+    /** Active player shields — used to clip overlapping ring segments */
+    siblingShields: Shield[] = [];
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, COMMAND_HUB_HEALTH, 0, COMMAND_HUB_RADIUS);
@@ -138,7 +141,8 @@ export class CommandHub extends GameNode {
 
     private drawRing(segments: number, radius: number, colour: number, alpha: number, lineWidth: number): void {
         this.shieldGraphics.lineStyle(lineWidth, colour, alpha);
-        this.shieldGraphics.beginPath();
+
+        const points: Array<{ px: number; py: number; inside: boolean }> = [];
         for (let i = 0; i <= segments; i++) {
             const angle = (i / segments) * Math.PI * 2;
             const wobble = 1 +
@@ -147,13 +151,44 @@ export class CommandHub extends GameNode {
             const r = radius * wobble;
             const px = Math.cos(angle) * r;
             const py = Math.sin(angle) * r;
-            if (i === 0) {
-                this.shieldGraphics.moveTo(px, py);
+
+            // Check if point falls inside a player shield bubble
+            const worldX = this.x + px;
+            const worldY = this.y + py;
+            let inside = false;
+            for (const sib of this.siblingShields) {
+                if (sib.bubbleRadius <= 0) continue;
+                const dx = worldX - sib.x;
+                const dy = worldY - sib.y;
+                if (dx * dx + dy * dy < sib.bubbleRadius * sib.bubbleRadius) {
+                    inside = true;
+                    break;
+                }
+            }
+            points.push({ px, py, inside });
+        }
+
+        // Draw only segments outside sibling bubbles
+        let inPath = false;
+        for (const pt of points) {
+            if (pt.inside) {
+                if (inPath) {
+                    this.shieldGraphics.strokePath();
+                    inPath = false;
+                }
             } else {
-                this.shieldGraphics.lineTo(px, py);
+                if (!inPath) {
+                    this.shieldGraphics.beginPath();
+                    this.shieldGraphics.moveTo(pt.px, pt.py);
+                    inPath = true;
+                } else {
+                    this.shieldGraphics.lineTo(pt.px, pt.py);
+                }
             }
         }
-        this.shieldGraphics.strokePath();
+        if (inPath) {
+            this.shieldGraphics.strokePath();
+        }
     }
 
     private getShieldColour(): number {

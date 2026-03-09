@@ -566,6 +566,10 @@ export class PowerNetwork {
         }
         for (const shield of activeShields) {
             shield.siblingShields = activeShields.filter(s => s !== shield);
+            shield.hubRef = this.hub ?? null;
+        }
+        if (this.hub) {
+            this.hub.siblingShields = activeShields;
         }
         for (const node of this.adjacency.keys()) {
             if (node instanceof Shield && node.isFullyConstructed()) {
