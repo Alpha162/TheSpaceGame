@@ -338,6 +338,15 @@ export class PowerNetwork {
         this._totalGeneration = this.hub.powerGeneration;
         let availablePower = this._totalGeneration;
 
+        // Hub self-repair draws power from generation before distributing
+        const hubRepairDraw = this.hub.getCurrentPowerDraw();
+        if (hubRepairDraw > availablePower) {
+            // Not enough power to self-repair — cancel repair
+            availablePower = 0;
+        } else {
+            availablePower -= hubRepairDraw;
+        }
+
         // Gather hub-connected online/brownout nodes grouped by priority
         const tiers: Map<PowerPriority, Array<{ node: GameNode; distance: number; draw: number }>> = new Map();
         const hubCapacitors: Capacitor[] = [];
@@ -361,7 +370,7 @@ export class PowerNetwork {
         }
 
         // Track total demand (hub + islands)
-        this._totalDemand = 0;
+        this._totalDemand = hubRepairDraw;
         for (const tier of tiers.values()) {
             for (const entry of tier) {
                 this._totalDemand += entry.draw;

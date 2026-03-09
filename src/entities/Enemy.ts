@@ -5,6 +5,13 @@ import {
     COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER
 } from '../utils/Constants';
 
+/** Desired orbit distance — slightly inside attack range so they keep firing */
+const ORBIT_RADIUS = ENEMY_ATTACK_RANGE * 0.85;
+/** How fast the enemy strafes laterally (fraction of base speed) */
+const STRAFE_SPEED_FACTOR = 0.6;
+/** How strongly the enemy corrects toward the ideal orbit distance */
+const RADIAL_CORRECTION_FACTOR = 0.3;
+
 export class Enemy {
     readonly graphics: Phaser.GameObjects.Graphics;
     x: number;
@@ -22,6 +29,8 @@ export class Enemy {
     blockedByShield = false;
     /** How far the enemy can move this frame (set externally to clamp at shield edge) */
     moveClamp = Infinity;
+    /** Orbit direction: +1 = counter-clockwise, -1 = clockwise */
+    private orbitDir: 1 | -1;
 
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number) {
         this.x = x;
@@ -33,6 +42,8 @@ export class Enemy {
         this.speed = ENEMY_SPEED;
         this.damage = ENEMY_DAMAGE;
         this.radius = ENEMY_RADIUS;
+        // Randomly pick orbit direction so enemies don't all circle the same way
+        this.orbitDir = Math.random() < 0.5 ? 1 : -1;
 
         this.graphics = scene.add.graphics();
         this.graphics.setDepth(5);
@@ -47,14 +58,13 @@ export class Enemy {
     update(delta: number): void {
         if (!this.alive) return;
 
-        // Move toward target
         const dx = this.targetX - this.x;
         const dy = this.targetY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist > ENEMY_ATTACK_RANGE && !this.blockedByShield) {
+            // ── Approach phase: move straight toward target ──
             let moveAmount = this.speed * delta;
-            // Clamp movement so enemy doesn't penetrate shield boundary
             if (this.moveClamp < Infinity) {
                 moveAmount = Math.min(moveAmount, Math.max(0, this.moveClamp));
             }
@@ -62,6 +72,36 @@ export class Enemy {
                 this.x += (dx / dist) * moveAmount;
                 this.y += (dy / dist) * moveAmount;
             }
+        } else if (!this.blockedByShield && dist > 0) {
+            // ── Orbit phase: strafe around the target ──
+            const nx = dx / dist;   // unit vector toward target
+            const ny = dy / dist;
+
+            // Perpendicular (tangent) for strafing
+            const tx = -ny * this.orbitDir;
+            const ty = nx * this.orbitDir;
+
+            // Radial correction: drift in/out to maintain orbit distance
+            const radialError = dist - ORBIT_RADIUS;   // +ve = too far, -ve = too close
+            const radialStrength = radialError * RADIAL_CORRECTION_FACTOR;
+
+            // Combine tangential strafe + radial correction
+            const moveSpeed = this.speed * STRAFE_SPEED_FACTOR * delta;
+            let vx = tx * moveSpeed + nx * radialStrength * this.speed * delta;
+            let vy = ty * moveSpeed + ny * radialStrength * this.speed * delta;
+
+            // Respect shield clamp
+            if (this.moveClamp < Infinity) {
+                const mag = Math.sqrt(vx * vx + vy * vy);
+                if (mag > this.moveClamp) {
+                    const scale = Math.max(0, this.moveClamp) / mag;
+                    vx *= scale;
+                    vy *= scale;
+                }
+            }
+
+            this.x += vx;
+            this.y += vy;
         }
 
         // Reset per-frame flags
