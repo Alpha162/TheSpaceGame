@@ -8,10 +8,11 @@ import {
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED, COLOUR_SELECTION,
     PowerPriority
 } from '../../utils/Constants';
+import type { IClusterShield, ShieldClusterManager } from '../../systems/ShieldClusterManager';
 
 export type ShieldState = 'deploying' | 'maintaining' | 'collapsed' | 'cooldown';
 
-export class Shield extends GameNode {
+export class Shield extends GameNode implements IClusterShield {
     shieldState: ShieldState = 'deploying';
     bubbleRadius = 0;
     maxBubbleRadius: number = SHIELD_BUBBLE_MAX_RADIUS;
@@ -24,6 +25,10 @@ export class Shield extends GameNode {
     siblingShields: Shield[] = [];
     /** Reference to the hub for merged rendering with its built-in shield */
     hubRef: import('../CommandHub').CommandHub | null = null;
+    /** Cluster manager for shared heat distribution */
+    clusterManager: ShieldClusterManager | null = null;
+    inCluster = false;
+    clusterSyncPhase = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
@@ -52,8 +57,21 @@ export class Shield extends GameNode {
         }
     }
 
+    // IClusterShield interface
+    getShieldRadius(): number { return this.bubbleRadius; }
+    getHeat(): number { return this.heatLevel; }
+    setHeat(value: number): void { this.heatLevel = value; }
+    collapseShield(): void {
+        this.heatLevel = 1;
+        this.shieldState = 'collapsed';
+    }
+
     update(_time: number, delta: number): void {
-        this.ripplePhase += delta * 0.0008;
+        if (this.inCluster) {
+            this.ripplePhase = this.clusterSyncPhase;
+        } else {
+            this.ripplePhase += delta * 0.0008;
+        }
 
         const powered = this.nodeState === 'online';
 
@@ -132,17 +150,19 @@ export class Shield extends GameNode {
 
     /** Absorb incoming damage. Returns the amount of damage that passed through. */
     absorbDamage(damage: number): number {
-        if (this.shieldState !== 'maintaining' && this.shieldState !== 'deploying') {
+        if (!this.isShieldActive()) {
             return damage; // shield is down, all damage passes through
         }
 
-        this.heatLevel += damage * SHIELD_ABSORB_HEAT_PER_DAMAGE;
+        const heatIncrease = damage * SHIELD_ABSORB_HEAT_PER_DAMAGE;
 
-        if (this.heatLevel >= 1) {
-            // Shield overloaded — collapse
-            this.heatLevel = 1;
-            this.shieldState = 'collapsed';
-            return 0; // absorbed the hit that broke it
+        if (this.clusterManager) {
+            this.clusterManager.distributeHeat(this, heatIncrease);
+        } else {
+            this.heatLevel += heatIncrease;
+            if (this.heatLevel >= 1) {
+                this.collapseShield();
+            }
         }
 
         return 0; // fully absorbed

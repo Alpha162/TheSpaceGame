@@ -7,6 +7,8 @@ import { Blaster } from '../entities/turrets/Blaster';
 import { PowerLink } from '../entities/PowerLink';
 import { MAX_POWER_LINK_LENGTH, POWER_TICK_INTERVAL_MS, PowerPriority } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
+import { ShieldClusterManager } from './ShieldClusterManager';
+import type { IClusterShield } from './ShieldClusterManager';
 
 interface IslandSubNetwork {
     nodes: Set<GameNode>;
@@ -21,6 +23,7 @@ export class PowerNetwork {
     private bfsDistances: Map<GameNode, number> = new Map();
     private scene: Phaser.Scene | null = null;
     private islandSubNetworks: IslandSubNetwork[] = [];
+    private shieldClusterManager = new ShieldClusterManager();
 
     // Tick-based power economy state
     private tickAccumulator = 0;
@@ -570,6 +573,20 @@ export class PowerNetwork {
         }
         if (this.hub) {
             this.hub.siblingShields = activeShields;
+        }
+
+        // Build shield clusters for shared heat distribution
+        const clusterMembers: IClusterShield[] = [...activeShields];
+        if (this.hub && this.hub.isHubShieldUp()) {
+            clusterMembers.push(this.hub);
+        }
+        this.shieldClusterManager.rebuild(clusterMembers);
+        this.shieldClusterManager.updateSyncPhase(delta);
+        for (const shield of activeShields) {
+            shield.clusterManager = this.shieldClusterManager;
+        }
+        if (this.hub) {
+            this.hub.clusterManager = this.shieldClusterManager;
         }
         for (const node of this.adjacency.keys()) {
             if (node instanceof Shield && node.isFullyConstructed()) {

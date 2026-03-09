@@ -8,8 +8,9 @@ import {
 } from '../utils/Constants';
 import { hexagonPoints } from '../utils/Helpers';
 import type { Shield } from './defence/Shield';
+import type { IClusterShield, ShieldClusterManager } from '../systems/ShieldClusterManager';
 
-export class CommandHub extends GameNode {
+export class CommandHub extends GameNode implements IClusterShield {
     powerGeneration: number;
     private glowTween: Phaser.Tweens.Tween | null = null;
     private glowAlpha = 0.6;
@@ -24,6 +25,10 @@ export class CommandHub extends GameNode {
     private ripplePhase = 0;
     /** Active player shields — used to clip overlapping ring segments */
     siblingShields: Shield[] = [];
+    /** Cluster manager for shared heat distribution */
+    clusterManager: ShieldClusterManager | null = null;
+    inCluster = false;
+    clusterSyncPhase = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, COMMAND_HUB_HEALTH, 0, COMMAND_HUB_RADIUS);
@@ -47,9 +52,24 @@ export class CommandHub extends GameNode {
         });
     }
 
+    // IClusterShield interface
+    getShieldRadius(): number { return this.hubShieldRadius; }
+    getHeat(): number { return this.hubShieldHeat; }
+    setHeat(value: number): void { this.hubShieldHeat = value; }
+    collapseShield(): void {
+        this.hubShieldHeat = 1;
+        this.hubShieldActive = false;
+        this.hubShieldRadius = 0;
+        this.hubShieldCooldown = 5000;
+    }
+
     /** Called each frame by PowerNetwork to update the hub shield */
     updateHubShield(delta: number): void {
-        this.ripplePhase += delta * 0.0008;
+        if (this.inCluster) {
+            this.ripplePhase = this.clusterSyncPhase;
+        } else {
+            this.ripplePhase += delta * 0.0008;
+        }
 
         if (this.hubShieldCooldown > 0) {
             this.hubShieldCooldown -= delta;
@@ -85,14 +105,15 @@ export class CommandHub extends GameNode {
             return damage;
         }
 
-        this.hubShieldHeat += damage * SHIELD_ABSORB_HEAT_PER_DAMAGE;
+        const heatIncrease = damage * SHIELD_ABSORB_HEAT_PER_DAMAGE;
 
-        if (this.hubShieldHeat >= 1) {
-            this.hubShieldHeat = 1;
-            this.hubShieldActive = false;
-            this.hubShieldRadius = 0;
-            this.hubShieldCooldown = 5000;
-            return 0;
+        if (this.clusterManager) {
+            this.clusterManager.distributeHeat(this, heatIncrease);
+        } else {
+            this.hubShieldHeat += heatIncrease;
+            if (this.hubShieldHeat >= 1) {
+                this.collapseShield();
+            }
         }
 
         return 0;
@@ -100,6 +121,10 @@ export class CommandHub extends GameNode {
 
     isHubShieldUp(): boolean {
         return this.hubShieldActive && this.hubShieldRadius > 0;
+    }
+
+    isShieldActive(): boolean {
+        return this.isHubShieldUp();
     }
 
     private drawShieldBubble(): void {
