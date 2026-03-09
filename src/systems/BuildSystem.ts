@@ -10,7 +10,8 @@ import {
     RELAY_COST, RELAY_RADIUS, RELAY_POWER,
     SHIELD_COST, SHIELD_RADIUS, SHIELD_POWER_DEPLOY,
     CAPACITOR_COST, CAPACITOR_RADIUS, CAPACITOR_POWER_CHARGE,
-    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY
+    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY,
+    VIEWPORT_WIDTH, VIEWPORT_HEIGHT
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
@@ -53,8 +54,10 @@ export class BuildSystem {
         this.rangeGraphics.setDepth(99);
         this.rangeGraphics.setVisible(false);
 
-        // Click to place or select
+        // Click to place or select (blocked over UI)
         scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            if (this.isPointerOverUI(pointer)) return;
+
             if (pointer.leftButtonDown()) {
                 if (this.activeBuildType) {
                     this.tryPlace(pointer);
@@ -71,7 +74,7 @@ export class BuildSystem {
             }
         });
 
-        // ESC to cancel build or deselect
+        // ESC / Q to cancel build or deselect
         if (scene.input.keyboard) {
             scene.input.keyboard.on('keydown-ESC', () => {
                 if (this.activeBuildType) {
@@ -80,15 +83,38 @@ export class BuildSystem {
                     this.deselectNode();
                 }
             });
+            scene.input.keyboard.on('keydown-Q', () => {
+                if (this.activeBuildType) {
+                    this.cancelBuild();
+                } else {
+                    this.deselectNode();
+                }
+            });
 
-            // Delete/Backspace to remove selected node
+            // Delete/Backspace/X to remove selected node
             scene.input.keyboard.on('keydown-DELETE', () => {
                 this.deleteSelected();
             });
             scene.input.keyboard.on('keydown-BACKSPACE', () => {
                 this.deleteSelected();
             });
+            scene.input.keyboard.on('keydown-X', () => {
+                this.deleteSelected();
+            });
         }
+    }
+
+    private isPointerOverUI(pointer: Phaser.Input.Pointer): boolean {
+        const x = pointer.x;
+        const y = pointer.y;
+
+        // HUD top bar
+        if (x >= 4 && x <= VIEWPORT_WIDTH - 4 && y >= 4 && y <= 56) return true;
+
+        // Build menu bottom-left panel
+        if (x >= 4 && x <= 284 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
+
+        return false;
     }
 
     startBuild(type: BuildableType): void {

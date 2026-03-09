@@ -62,6 +62,12 @@ export class BuildMenu {
                 this.buildSystem.startBuild('capacitor');
                 this.updateButtonStates();
             });
+            scene.input.keyboard.on('keydown-Q', () => {
+                this.updateButtonStates();
+            });
+            scene.input.keyboard.on('keydown-ESC', () => {
+                this.updateButtonStates();
+            });
         }
     }
 
