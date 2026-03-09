@@ -139,15 +139,16 @@ export class CommandHub extends GameNode implements IClusterShield {
 
         const colour = this.getShieldColour();
         const alpha = 0.5;
+        const membraneAlphaScale = this.inCluster ? 0.35 : 1;
         const segments = 64;
 
         // Outer glow
-        this.drawRing(segments, this.hubShieldRadius + 4, colour, alpha * 0.08, 3);
+        this.drawRing(segments, this.hubShieldRadius + 4, colour, alpha * 0.08 * membraneAlphaScale, 3);
         // Main membrane
-        this.drawRing(segments, this.hubShieldRadius, colour, alpha * 0.12, 1.5);
+        this.drawRing(segments, this.hubShieldRadius, colour, alpha * 0.12 * membraneAlphaScale, 1.5);
         // Inner shimmer
         if (this.hubShieldRadius > 5) {
-            this.drawRing(segments, this.hubShieldRadius - 3, colour, alpha * 0.06, 1);
+            this.drawRing(segments, this.hubShieldRadius - 3, colour, alpha * 0.06 * membraneAlphaScale, 1);
         }
 
         // Ripple rings (with cluster delay from barycenter)

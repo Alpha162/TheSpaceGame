@@ -200,19 +200,21 @@ export class Shield extends GameNode implements IClusterShield {
             ? 0.2 + 0.3 * this.internalReserve
             : this.nodeState === 'brownout' ? 0.3 : 0.6;
 
+        const membraneAlphaScale = this.inCluster ? 0.3 : 1;
+
         // Organic bubble — multiple layers with sine-wave radius perturbation
         const segments = 64;
 
         // Outer glow
-        this.drawOrganicRing(segments, this.bubbleRadius + 4, baseColour, alpha * 0.08, 3, 0);
+        this.drawOrganicRing(segments, this.bubbleRadius + 4, baseColour, alpha * 0.08 * membraneAlphaScale, 3, 0);
 
         // Main bubble membrane
-        this.drawOrganicRing(segments, this.bubbleRadius, baseColour, alpha * 0.15, 1.5, 0);
+        this.drawOrganicRing(segments, this.bubbleRadius, baseColour, alpha * 0.15 * membraneAlphaScale, 1.5, 0);
 
         // Inner shimmer ring
         const shimmerRadius = this.bubbleRadius - 3;
         if (shimmerRadius > 0) {
-            this.drawOrganicRing(segments, shimmerRadius, baseColour, alpha * 0.08, 1, Math.PI);
+            this.drawOrganicRing(segments, shimmerRadius, baseColour, alpha * 0.08 * membraneAlphaScale, 1, Math.PI);
         }
 
         // Ripple rings — concentric waves that pulse outward

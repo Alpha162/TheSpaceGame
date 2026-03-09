@@ -260,30 +260,47 @@ export class ShieldClusterManager {
     private renderClusterMembrane(cluster: ShieldCluster): void {
         const g = this.clusterGraphics!;
 
-        // 1. Sample offset points around each member
-        const points: Array<{ x: number; y: number }> = [];
-        for (const m of cluster.members) {
-            const r = m.getShieldRadius() + CLUSTER_MEMBRANE_MARGIN;
-            for (let i = 0; i < CLUSTER_MEMBRANE_SAMPLES; i++) {
-                const angle = (i / CLUSTER_MEMBRANE_SAMPLES) * Math.PI * 2;
-                const wobble = 1 + Math.sin(angle * 3 + cluster.syncPhase * 1.5) * 0.03;
-                points.push({
-                    x: m.x + r * wobble * Math.cos(angle),
-                    y: m.y + r * wobble * Math.sin(angle)
-                });
+        // Build one unified contour from the union of all shield circles.
+        // We ray-cast from cluster center so hub size naturally influences silhouette.
+        const contour: Array<{ x: number; y: number }> = [];
+        for (let i = 0; i < CLUSTER_MEMBRANE_SAMPLES; i++) {
+            const angle = (i / CLUSTER_MEMBRANE_SAMPLES) * Math.PI * 2;
+            const ux = Math.cos(angle);
+            const uy = Math.sin(angle);
+
+            let bestT = -Infinity;
+            for (const m of cluster.members) {
+                const r = m.getShieldRadius() + CLUSTER_MEMBRANE_MARGIN;
+                const ox = cluster.centerX - m.x;
+                const oy = cluster.centerY - m.y;
+
+                // Intersect ray C + t*u with circle |P - M|^2 = r^2
+                const proj = -(ox * ux + oy * uy);
+                const perpSq = ox * ox + oy * oy - proj * proj;
+                if (perpSq > r * r) continue;
+
+                const reach = Math.sqrt(r * r - perpSq);
+                const t = proj + reach;
+                if (t > bestT) bestT = t;
             }
+
+            if (!Number.isFinite(bestT)) continue;
+
+            const wobble = 1 + Math.sin(angle * 3 + cluster.syncPhase * 1.4) * 0.015;
+            contour.push({
+                x: cluster.centerX + ux * bestT * wobble,
+                y: cluster.centerY + uy * bestT * wobble
+            });
         }
 
-        // 2. Convex hull
-        const hull = this.grahamScan(points);
-        if (hull.length < 3) return;
+        if (contour.length < 3) return;
 
-        // 3. Chaikin smoothing (2 passes)
-        let smoothed = hull;
+        // Smooth silhouette while keeping the same topology.
+        let smoothed = contour;
         smoothed = this.chaikinSmooth(smoothed);
         smoothed = this.chaikinSmooth(smoothed);
 
-        // 4. Draw glow layer
+        // Draw glow layer
         g.lineStyle(6, COLOUR_CLUSTER_VIOLET, 0.03);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
@@ -293,7 +310,7 @@ export class ShieldClusterManager {
         g.closePath();
         g.strokePath();
 
-        // 5. Draw inner membrane
+        // Draw inner membrane
         g.lineStyle(2, COLOUR_CLUSTER_VIOLET, 0.08);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
@@ -305,48 +322,6 @@ export class ShieldClusterManager {
     }
 
     // ── Geometry helpers ───────────────────────────────────────────
-
-    private grahamScan(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
-        if (points.length < 3) return points.slice();
-
-        // Find bottom-most point (then left-most)
-        let pivot = points[0];
-        for (let i = 1; i < points.length; i++) {
-            if (points[i].y < pivot.y || (points[i].y === pivot.y && points[i].x < pivot.x)) {
-                pivot = points[i];
-            }
-        }
-
-        // Sort by polar angle from pivot
-        const sorted = points
-            .filter(p => p !== pivot)
-            .sort((a, b) => {
-                const angleA = Math.atan2(a.y - pivot.y, a.x - pivot.x);
-                const angleB = Math.atan2(b.y - pivot.y, b.x - pivot.x);
-                if (angleA !== angleB) return angleA - angleB;
-                // Same angle — keep the farther point
-                const distA = (a.x - pivot.x) ** 2 + (a.y - pivot.y) ** 2;
-                const distB = (b.x - pivot.x) ** 2 + (b.y - pivot.y) ** 2;
-                return distA - distB;
-            });
-
-        const stack: Array<{ x: number; y: number }> = [pivot];
-        for (const p of sorted) {
-            while (stack.length > 1) {
-                const top = stack[stack.length - 1];
-                const below = stack[stack.length - 2];
-                const cross = (top.x - below.x) * (p.y - below.y) - (top.y - below.y) * (p.x - below.x);
-                if (cross <= 0) {
-                    stack.pop();
-                } else {
-                    break;
-                }
-            }
-            stack.push(p);
-        }
-
-        return stack;
-    }
 
     private chaikinSmooth(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
         const result: Array<{ x: number; y: number }> = [];
