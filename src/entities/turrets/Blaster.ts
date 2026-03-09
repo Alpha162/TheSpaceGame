@@ -89,12 +89,14 @@ export class Blaster extends GameNode {
             this.graphics.strokeCircle(0, 0, this.nodeRadius + 4);
 
             // Show range circle when selected
-            this.rangeGraphics.clear();
-            this.rangeGraphics.x = this.x;
-            this.rangeGraphics.y = this.y;
-            this.rangeGraphics.lineStyle(1, COLOUR_CYAN, 0.15);
-            this.rangeGraphics.strokeCircle(0, 0, BLASTER_RANGE);
-        } else {
+            if (this.rangeGraphics) {
+                this.rangeGraphics.clear();
+                this.rangeGraphics.x = this.x;
+                this.rangeGraphics.y = this.y;
+                this.rangeGraphics.lineStyle(1, COLOUR_CYAN, 0.15);
+                this.rangeGraphics.strokeCircle(0, 0, BLASTER_RANGE);
+            }
+        } else if (this.rangeGraphics) {
             this.rangeGraphics.clear();
         }
 
