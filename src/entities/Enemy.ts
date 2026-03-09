@@ -2,9 +2,8 @@ import Phaser from 'phaser';
 import {
     ENEMY_RADIUS, ENEMY_HEALTH, ENEMY_SPEED, ENEMY_DAMAGE,
     ENEMY_ATTACK_COOLDOWN, ENEMY_ATTACK_RANGE,
-    COLOUR_RED, COLOUR_DARK_METAL
+    COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER
 } from '../utils/Constants';
-import { distanceBetween } from '../utils/Helpers';
 
 export class Enemy {
     readonly graphics: Phaser.GameObjects.Graphics;
@@ -19,6 +18,10 @@ export class Enemy {
     private targetX: number;
     private targetY: number;
     alive = true;
+    /** Set by CombatSystem when enemy is blocked by a shield */
+    blockedByShield = false;
+    /** How far the enemy can move this frame (set externally to clamp at shield edge) */
+    moveClamp = Infinity;
 
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number) {
         this.x = x;
@@ -49,11 +52,21 @@ export class Enemy {
         const dy = this.targetY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        if (dist > ENEMY_ATTACK_RANGE) {
-            const moveAmount = this.speed * delta;
-            this.x += (dx / dist) * moveAmount;
-            this.y += (dy / dist) * moveAmount;
+        if (dist > ENEMY_ATTACK_RANGE && !this.blockedByShield) {
+            let moveAmount = this.speed * delta;
+            // Clamp movement so enemy doesn't penetrate shield boundary
+            if (this.moveClamp < Infinity) {
+                moveAmount = Math.min(moveAmount, Math.max(0, this.moveClamp));
+            }
+            if (moveAmount > 0 && dist > 0) {
+                this.x += (dx / dist) * moveAmount;
+                this.y += (dy / dist) * moveAmount;
+            }
         }
+
+        // Reset per-frame flags
+        this.blockedByShield = false;
+        this.moveClamp = Infinity;
 
         // Cooldown
         if (this.attackCooldown > 0) {
@@ -64,9 +77,8 @@ export class Enemy {
     }
 
     /** Returns true if this enemy is in range and ready to attack */
-    canAttack(targetX: number, targetY: number): boolean {
-        if (this.attackCooldown > 0) return false;
-        return distanceBetween(this.x, this.y, targetX, targetY) <= ENEMY_ATTACK_RANGE + this.radius;
+    canAttack(): boolean {
+        return this.attackCooldown <= 0;
     }
 
     /** Consume the attack — resets cooldown, returns damage */
@@ -102,6 +114,12 @@ export class Enemy {
         // Inner red core
         this.graphics.fillStyle(COLOUR_RED, 0.7);
         this.graphics.fillCircle(0, 0, this.radius * 0.4);
+
+        // Attack flash when cooldown just started
+        if (this.attackCooldown > ENEMY_ATTACK_COOLDOWN * 0.8) {
+            this.graphics.fillStyle(COLOUR_AMBER, 0.5);
+            this.graphics.fillCircle(0, 0, this.radius * 1.3);
+        }
 
         // Health bar (only when damaged)
         if (healthPct < 1) {

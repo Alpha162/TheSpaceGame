@@ -7,9 +7,20 @@ import { ResourceManager } from './ResourceManager';
 import { PowerNetwork } from './PowerNetwork';
 import { BuildSystem } from './BuildSystem';
 import {
-    WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD, ENEMY_ATTACK_RANGE
+    WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD, ENEMY_ATTACK_RANGE,
+    COLOUR_CYAN, COLOUR_AMBER
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
+
+interface Projectile {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    damage: number;
+    life: number;
+    graphics: Phaser.GameObjects.Graphics;
+}
 
 export class CombatSystem {
     private scene: Phaser.Scene;
@@ -17,6 +28,7 @@ export class CombatSystem {
     private powerNetwork: PowerNetwork;
     private buildSystem: BuildSystem;
     private enemies: Enemy[] = [];
+    private projectiles: Projectile[] = [];
 
     constructor(
         scene: Phaser.Scene,
@@ -50,15 +62,31 @@ export class CombatSystem {
         const edge = Math.floor(Math.random() * 4);
         const margin = 20;
         switch (edge) {
-            case 0: // top
-                return { x: Math.random() * WORLD_WIDTH, y: -margin };
-            case 1: // right
-                return { x: WORLD_WIDTH + margin, y: Math.random() * WORLD_HEIGHT };
-            case 2: // bottom
-                return { x: Math.random() * WORLD_WIDTH, y: WORLD_HEIGHT + margin };
-            default: // left
-                return { x: -margin, y: Math.random() * WORLD_HEIGHT };
+            case 0: return { x: Math.random() * WORLD_WIDTH, y: -margin };
+            case 1: return { x: WORLD_WIDTH + margin, y: Math.random() * WORLD_HEIGHT };
+            case 2: return { x: Math.random() * WORLD_WIDTH, y: WORLD_HEIGHT + margin };
+            default: return { x: -margin, y: Math.random() * WORLD_HEIGHT };
         }
+    }
+
+    /** Fire a projectile from (sx,sy) toward enemy */
+    fireProjectile(sx: number, sy: number, target: Enemy, damage: number, speed: number): void {
+        const dx = target.x - sx;
+        const dy = target.y - sy;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        const gfx = this.scene.add.graphics();
+        gfx.setDepth(8);
+
+        this.projectiles.push({
+            x: sx,
+            y: sy,
+            vx: (dx / dist) * speed,
+            vy: (dy / dist) * speed,
+            damage,
+            life: 2000,
+            graphics: gfx
+        });
     }
 
     update(delta: number): void {
@@ -76,6 +104,7 @@ export class CombatSystem {
             }
         }
 
+        // Update enemies
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
             if (!enemy.alive) {
@@ -84,7 +113,7 @@ export class CombatSystem {
                 continue;
             }
 
-            // Find nearest target for this enemy
+            // Find nearest target
             let nearestNode: GameNode | null = null;
             let nearestDist = Infinity;
             for (const node of allNodes) {
@@ -100,35 +129,51 @@ export class CombatSystem {
                 enemy.setTarget(nearestNode.x, nearestNode.y);
             }
 
-            enemy.update(delta);
-
-            // Check shield collision — if enemy is inside an active shield bubble,
-            // damage the shield instead of passing through
-            let blockedByShield = false;
+            // Check shields BEFORE movement — clamp enemy to stop at shield edge
+            let shieldTarget: Shield | null = null;
             for (const shield of activeShields) {
                 const distToShield = distanceBetween(enemy.x, enemy.y, shield.x, shield.y);
-                if (distToShield <= shield.bubbleRadius + enemy.radius) {
-                    // Enemy is touching/inside the shield bubble
-                    if (enemy.canAttack(shield.x, shield.y)) {
-                        const damage = enemy.performAttack();
-                        shield.absorbDamage(damage);
-                    }
-                    blockedByShield = true;
-                    // Push enemy to shield boundary
-                    if (distToShield < shield.bubbleRadius) {
-                        const dx = enemy.x - shield.x;
-                        const dy = enemy.y - shield.y;
-                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                        enemy.x = shield.x + (dx / dist) * (shield.bubbleRadius + enemy.radius);
-                        enemy.y = shield.y + (dy / dist) * (shield.bubbleRadius + enemy.radius);
-                    }
+                const stopDist = shield.bubbleRadius + enemy.radius + 1;
+
+                if (distToShield <= stopDist) {
+                    // Already at or inside shield boundary — block and attack
+                    enemy.blockedByShield = true;
+                    shieldTarget = shield;
                     break;
+                }
+
+                // Check if target is inside this shield — enemy needs to stop at the boundary
+                if (nearestNode) {
+                    const targetToShield = distanceBetween(nearestNode.x, nearestNode.y, shield.x, shield.y);
+                    if (targetToShield < shield.bubbleRadius) {
+                        // Target is shielded; clamp movement to stop at bubble edge
+                        const moveAllowance = distToShield - stopDist;
+                        if (moveAllowance < enemy.moveClamp) {
+                            enemy.moveClamp = moveAllowance;
+                            shieldTarget = shield;
+                        }
+                    }
                 }
             }
 
-            // Attack nearest node if in range and not blocked by shield
-            if (!blockedByShield && nearestNode && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
-                if (enemy.canAttack(nearestNode.x, nearestNode.y)) {
+            enemy.update(delta);
+
+            // After movement: re-check if now touching shield (from clamped movement)
+            if (!enemy.blockedByShield && shieldTarget) {
+                const distAfter = distanceBetween(enemy.x, enemy.y, shieldTarget.x, shieldTarget.y);
+                if (distAfter <= shieldTarget.bubbleRadius + enemy.radius + 3) {
+                    enemy.blockedByShield = true;
+                }
+            }
+
+            // Attack logic
+            if (enemy.canAttack()) {
+                if (shieldTarget && (enemy.blockedByShield || enemy.moveClamp < 5)) {
+                    // Attack the shield
+                    const damage = enemy.performAttack();
+                    shieldTarget.absorbDamage(damage);
+                } else if (!shieldTarget && nearestNode && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
+                    // Attack node directly (no shield in the way)
                     const damage = enemy.performAttack();
                     const died = nearestNode.takeDamage(damage);
                     if (died) {
@@ -137,16 +182,67 @@ export class CombatSystem {
                 }
             }
         }
+
+        // Update projectiles
+        this.updateProjectiles(delta);
+    }
+
+    private updateProjectiles(delta: number): void {
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+            p.life -= delta;
+
+            if (p.life <= 0) {
+                p.graphics.destroy();
+                this.projectiles.splice(i, 1);
+                continue;
+            }
+
+            // Move
+            p.x += p.vx * (delta / 1000);
+            p.y += p.vy * (delta / 1000);
+
+            // Check hit against enemies
+            let hit = false;
+            for (const enemy of this.enemies) {
+                if (!enemy.alive) continue;
+                const dist = distanceBetween(p.x, p.y, enemy.x, enemy.y);
+                if (dist <= enemy.radius + 3) {
+                    const died = enemy.takeDamage(p.damage);
+                    if (died) {
+                        this.resourceManager.earn(ENEMY_MINERAL_REWARD);
+                    }
+                    hit = true;
+                    break;
+                }
+            }
+
+            if (hit) {
+                p.graphics.destroy();
+                this.projectiles.splice(i, 1);
+                continue;
+            }
+
+            // Draw projectile
+            p.graphics.clear();
+            p.graphics.x = p.x;
+            p.graphics.y = p.y;
+
+            const age = 2000 - p.life;
+            const flash = age < 50 ? 1 : 0.7;
+            p.graphics.fillStyle(COLOUR_CYAN, flash);
+            p.graphics.fillCircle(0, 0, 2);
+            p.graphics.fillStyle(COLOUR_AMBER, flash * 0.4);
+            p.graphics.fillCircle(0, 0, 3.5);
+        }
     }
 
     private handleNodeDeath(node: GameNode): void {
         if (node instanceof CommandHub) {
-            // Game over — for now just log it
             console.log('Command Hub destroyed! Game Over.');
             return;
         }
 
-        // Remove from build system and power network
         this.powerNetwork.removeNode(node);
         const placedNodes = this.buildSystem.getPlacedNodes();
         const idx = placedNodes.indexOf(node);
@@ -154,13 +250,11 @@ export class CombatSystem {
         node.destroy();
     }
 
-    /** Kill a specific enemy and award minerals */
     killEnemy(enemy: Enemy): void {
         this.resourceManager.earn(ENEMY_MINERAL_REWARD);
         enemy.alive = false;
     }
 
-    /** Get current enemy count */
     getEnemyCount(): number {
         return this.enemies.length;
     }
@@ -170,5 +264,9 @@ export class CombatSystem {
             enemy.destroy();
         }
         this.enemies = [];
+        for (const p of this.projectiles) {
+            p.graphics.destroy();
+        }
+        this.projectiles = [];
     }
 }

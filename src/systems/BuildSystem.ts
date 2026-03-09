@@ -3,19 +3,22 @@ import { GameNode } from '../entities/Node';
 import { PowerRelay } from '../entities/support/PowerRelay';
 import { Capacitor } from '../entities/support/Capacitor';
 import { Shield } from '../entities/defence/Shield';
+import { Blaster } from '../entities/turrets/Blaster';
 import { ResourceManager } from './ResourceManager';
+import { CombatSystem } from './CombatSystem';
 import { PowerNetwork } from './PowerNetwork';
 import {
     MAX_POWER_LINK_LENGTH, MIN_NODE_DISTANCE,
     RELAY_COST, RELAY_RADIUS, RELAY_POWER,
     SHIELD_COST, SHIELD_RADIUS, SHIELD_POWER_DEPLOY,
     CAPACITOR_COST, CAPACITOR_RADIUS, CAPACITOR_POWER_CHARGE,
+    BLASTER_COST, BLASTER_RADIUS, BLASTER_POWER,
     COLOUR_CYAN, COLOUR_RED, COLOUR_GREY,
     VIEWPORT_WIDTH, VIEWPORT_HEIGHT
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
-export type BuildableType = 'relay' | 'shield' | 'capacitor';
+export type BuildableType = 'relay' | 'shield' | 'capacitor' | 'blaster';
 
 interface BuildableConfig {
     cost: number;
@@ -27,7 +30,8 @@ interface BuildableConfig {
 export const BUILDABLE_CONFIGS: Record<BuildableType, BuildableConfig> = {
     relay: { cost: RELAY_COST, radius: RELAY_RADIUS, powerConsumption: RELAY_POWER, label: 'Power Relay' },
     shield: { cost: SHIELD_COST, radius: SHIELD_RADIUS, powerConsumption: SHIELD_POWER_DEPLOY, label: 'Shield' },
-    capacitor: { cost: CAPACITOR_COST, radius: CAPACITOR_RADIUS, powerConsumption: CAPACITOR_POWER_CHARGE, label: 'Capacitor' }
+    capacitor: { cost: CAPACITOR_COST, radius: CAPACITOR_RADIUS, powerConsumption: CAPACITOR_POWER_CHARGE, label: 'Capacitor' },
+    blaster: { cost: BLASTER_COST, radius: BLASTER_RADIUS, powerConsumption: BLASTER_POWER, label: 'Blaster' }
 };
 
 export class BuildSystem {
@@ -40,6 +44,7 @@ export class BuildSystem {
     private isValidPlacement = false;
     private placedNodes: GameNode[] = [];
     private selectedNode: GameNode | null = null;
+    private combatSystem: CombatSystem | null = null;
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.scene = scene;
@@ -112,12 +117,16 @@ export class BuildSystem {
         if (x >= 4 && x <= VIEWPORT_WIDTH - 4 && y >= 4 && y <= 56) return true;
 
         // Build menu bottom-left panel
-        if (x >= 4 && x <= 284 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
+        if (x >= 4 && x <= 378 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
 
         // Spawn panel bottom-right
         if (x >= VIEWPORT_WIDTH - 174 && x <= VIEWPORT_WIDTH - 4 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
 
         return false;
+    }
+
+    setCombatSystem(combatSystem: CombatSystem): void {
+        this.combatSystem = combatSystem;
     }
 
     startBuild(type: BuildableType): void {
@@ -213,6 +222,8 @@ export class BuildSystem {
             refundCost = SHIELD_COST;
         } else if (node instanceof Capacitor) {
             refundCost = CAPACITOR_COST;
+        } else if (node instanceof Blaster) {
+            refundCost = BLASTER_COST;
         }
         this.resourceManager.earn(refundCost);
 
@@ -313,6 +324,12 @@ export class BuildSystem {
             case 'capacitor':
                 node = new Capacitor(this.scene, worldPoint.x, worldPoint.y);
                 break;
+            case 'blaster': {
+                const blaster = new Blaster(this.scene, worldPoint.x, worldPoint.y);
+                if (this.combatSystem) blaster.setCombatSystem(this.combatSystem);
+                node = blaster;
+                break;
+            }
         }
 
         // Start construction delay

@@ -30,7 +30,7 @@ export class BuildMenu {
         this.bgGraphics.setDepth(200);
 
         const panelY = VIEWPORT_HEIGHT - 70;
-        const panelW = 280;
+        const panelW = 370;
         this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
         this.bgGraphics.fillRoundedRect(4, panelY, panelW, 64, 4);
         this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
@@ -47,6 +47,8 @@ export class BuildMenu {
         this.createButton('shield', bx, panelY + 6, btnW, btnH);
         bx += btnW + gap;
         this.createButton('capacitor', bx, panelY + 6, btnW, btnH);
+        bx += btnW + gap;
+        this.createButton('blaster', bx, panelY + 6, btnW, btnH);
 
         // Keyboard shortcuts
         if (scene.input.keyboard) {
@@ -60,6 +62,10 @@ export class BuildMenu {
             });
             scene.input.keyboard.on('keydown-THREE', () => {
                 this.buildSystem.startBuild('capacitor');
+                this.updateButtonStates();
+            });
+            scene.input.keyboard.on('keydown-FOUR', () => {
+                this.buildSystem.startBuild('blaster');
                 this.updateButtonStates();
             });
             scene.input.keyboard.on('keydown-Q', () => {

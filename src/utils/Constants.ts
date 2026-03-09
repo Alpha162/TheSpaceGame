@@ -82,6 +82,14 @@ export const RAIL_COST = 200;
 export const MISSILE_COST = 250;
 export const TESLA_COST = 300;
 
+// Blaster turret constants
+export const BLASTER_HEALTH = 60;
+export const BLASTER_RADIUS = 11;
+export const BLASTER_RANGE = 150;       // targeting range in world units
+export const BLASTER_FIRE_RATE = 2;     // shots per second
+export const BLASTER_DAMAGE = 8;        // per projectile
+export const BLASTER_PROJECTILE_SPEED = 300; // world units per second
+
 // Structure health
 export const RELAY_HEALTH = 50;
 

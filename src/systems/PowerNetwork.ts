@@ -3,6 +3,7 @@ import { CommandHub } from '../entities/CommandHub';
 import { PowerRelay } from '../entities/support/PowerRelay';
 import { Capacitor } from '../entities/support/Capacitor';
 import { Shield } from '../entities/defence/Shield';
+import { Blaster } from '../entities/turrets/Blaster';
 import { PowerLink } from '../entities/PowerLink';
 import { MAX_POWER_LINK_LENGTH, POWER_TICK_INTERVAL_MS, PowerPriority } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
@@ -553,6 +554,13 @@ export class PowerNetwork {
         }
         for (const node of this.adjacency.keys()) {
             if (node instanceof Shield && node.isFullyConstructed()) {
+                node.update(0, delta);
+            }
+        }
+
+        // Update blaster turrets every frame
+        for (const node of this.adjacency.keys()) {
+            if (node instanceof Blaster && node.isFullyConstructed()) {
                 node.update(0, delta);
             }
         }

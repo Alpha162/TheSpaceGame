@@ -53,6 +53,9 @@ export class GameScene extends Phaser.Scene {
         // Combat system
         this.combatSystem = new CombatSystem(this, this.resourceManager, this.powerNetwork, this.buildSystem);
 
+        // Cross-wire: build system needs combat system for blaster turrets
+        this.buildSystem.setCombatSystem(this.combatSystem);
+
         // UI (fixed to camera)
         this.hud = new HUD(this, this.resourceManager, this.powerNetwork);
         this.buildMenu = new BuildMenu(this, this.buildSystem);
