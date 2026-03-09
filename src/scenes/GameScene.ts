@@ -133,49 +133,12 @@ export class GameScene extends Phaser.Scene {
         }
 
         // Mouse wheel zoom toward pointer position
-        this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
-            const cam = this.cameras.main;
-            const oldZoom = cam.zoom;
-            let newZoom: number;
+        this.input.on('wheel', this.onWheel, this);
 
-            if (dy > 0) {
-                newZoom = Math.max(CAMERA_ZOOM_MIN, oldZoom - CAMERA_ZOOM_STEP);
-            } else if (dy < 0) {
-                newZoom = Math.min(CAMERA_ZOOM_MAX, oldZoom + CAMERA_ZOOM_STEP);
-            } else {
-                return;
-            }
-
-            // Zoom toward the world point under the mouse
-            const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-            cam.zoom = newZoom;
-
-            // After zoom, adjust scroll so worldPoint stays under the mouse
-            const newWorldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-            cam.scrollX += worldPoint.x - newWorldPoint.x;
-            cam.scrollY += worldPoint.y - newWorldPoint.y;
-        });
-
-        // Middle-mouse or right-mouse drag to pan camera
-        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (pointer.middleButtonDown()) {
-                this.startDrag(pointer);
-            }
-        });
-        this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-            if (this.isDragging) {
-                const cam = this.cameras.main;
-                const dx = (this.dragStartX - pointer.x) / cam.zoom;
-                const dy = (this.dragStartY - pointer.y) / cam.zoom;
-                cam.scrollX = this.dragCamStartX + dx;
-                cam.scrollY = this.dragCamStartY + dy;
-            }
-        });
-        this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-            if (this.isDragging && !pointer.middleButtonDown()) {
-                this.isDragging = false;
-            }
-        });
+        // Middle-mouse drag to pan camera
+        this.input.on('pointerdown', this.onPointerDown, this);
+        this.input.on('pointermove', this.onPointerMove, this);
+        this.input.on('pointerup', this.onPointerUp, this);
 
         // Pause button (top-right)
         this.createPauseButton();
@@ -185,9 +148,7 @@ export class GameScene extends Phaser.Scene {
 
         // P key to toggle pause
         if (this.input.keyboard) {
-            this.input.keyboard.on('keydown-P', () => {
-                this.togglePause();
-            });
+            this.input.keyboard.on('keydown-P', this.onKeyDownP, this);
         }
     }
 
