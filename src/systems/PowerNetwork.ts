@@ -55,6 +55,10 @@ export class PowerNetwork {
         return this.links;
     }
 
+    getShieldClusterManager(): ShieldClusterManager {
+        return this.shieldClusterManager;
+    }
+
     getBfsDistances(): Map<GameNode, number> {
         return this.bfsDistances;
     }

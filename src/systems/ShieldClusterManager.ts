@@ -159,4 +159,9 @@ export class ShieldClusterManager {
     getClusters(): ShieldCluster[] {
         return this.clusters;
     }
+
+    /** Return the cluster a shield belongs to, or undefined if solo. */
+    getClusterFor(shield: IClusterShield): ShieldCluster | undefined {
+        return this.memberToCluster.get(shield);
+    }
 }
