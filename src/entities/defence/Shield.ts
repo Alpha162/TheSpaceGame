@@ -13,6 +13,7 @@ import type { IClusterShield, ShieldClusterManager } from '../../systems/ShieldC
 export type ShieldState = 'deploying' | 'maintaining' | 'collapsed' | 'cooldown';
 
 export class Shield extends GameNode implements IClusterShield {
+    readonly isHub = false;
     shieldState: ShieldState = 'deploying';
     bubbleRadius = 0;
     maxBubbleRadius: number = SHIELD_BUBBLE_MAX_RADIUS;
@@ -198,11 +199,6 @@ export class Shield extends GameNode implements IClusterShield {
             ? 0.2 + 0.3 * this.internalReserve
             : this.nodeState === 'brownout' ? 0.3 : 0.6;
 
-        // Energy bridges to cluster siblings (drawn first, behind bubble)
-        if (this.inCluster) {
-            this.drawClusterBridges(baseColour, alpha);
-        }
-
         // Organic bubble — multiple layers with sine-wave radius perturbation
         const segments = 64;
 
@@ -245,51 +241,6 @@ export class Shield extends GameNode implements IClusterShield {
             const heatGlowRadius = this.bubbleRadius * 0.4 * this.heatLevel;
             this.bubbleGraphics.fillStyle(COLOUR_RED, this.heatLevel * 0.3);
             this.bubbleGraphics.fillCircle(0, 0, heatGlowRadius);
-        }
-    }
-
-    /** Draw energy bridge beams with traveling pulses to cluster siblings */
-    private drawClusterBridges(colour: number, _alpha: number): void {
-        for (const sib of this.siblingShields) {
-            if (sib.bubbleRadius <= 0 || !sib.inCluster) continue;
-            // Only draw to siblings that overlap (same cluster) and avoid double-drawing
-            const dx = sib.x - this.x;
-            const dy = sib.y - this.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 1) continue;
-            // Only draw between shields that actually overlap
-            if (dist > this.bubbleRadius + sib.bubbleRadius + 10) continue;
-            // Avoid double-drawing: only draw to "higher" sibling
-            if (sib.x < this.x || (sib.x === this.x && sib.y < this.y)) continue;
-
-            // Soft glowing beam (in local coords since bubbleGraphics is at this.x, this.y)
-            this.bubbleGraphics.lineStyle(4, colour, 0.12);
-            this.bubbleGraphics.beginPath();
-            this.bubbleGraphics.moveTo(0, 0);
-            this.bubbleGraphics.lineTo(dx, dy);
-            this.bubbleGraphics.strokePath();
-
-            // Wider glow layer
-            this.bubbleGraphics.lineStyle(10, colour, 0.04);
-            this.bubbleGraphics.beginPath();
-            this.bubbleGraphics.moveTo(0, 0);
-            this.bubbleGraphics.lineTo(dx, dy);
-            this.bubbleGraphics.strokePath();
-
-            // Traveling energy pulses along the beam
-            const pulseCount = 3;
-            for (let i = 0; i < pulseCount; i++) {
-                const t = ((this.ripplePhase * 0.8 + i / pulseCount) % 1);
-                const px = dx * t;
-                const py = dy * t;
-                // Pulse fades at endpoints
-                const edgeFade = Math.sin(t * Math.PI);
-                this.bubbleGraphics.fillStyle(colour, 0.35 * edgeFade);
-                this.bubbleGraphics.fillCircle(px, py, 3);
-                // Soft glow around pulse
-                this.bubbleGraphics.fillStyle(colour, 0.1 * edgeFade);
-                this.bubbleGraphics.fillCircle(px, py, 7);
-            }
         }
     }
 

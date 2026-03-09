@@ -24,6 +24,7 @@ import {
     UPGRADE_COST_FRACTION,
     COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER,
     SHIELD_BUBBLE_MAX_RADIUS, SHIELD_CLUSTER_OVERLAP_MARGIN,
+    COLOUR_CLUSTER_VIOLET,
     UI_SCALE
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
@@ -455,10 +456,10 @@ export class BuildSystem {
         this.ghostGraphics.fillStyle(colour, 0.04);
         this.ghostGraphics.fillCircle(wx, wy, bubbleR);
 
-        // Draw bridge lines to cluster siblings
+        // Draw cluster connection preview lines in violet
         if (willCluster) {
             for (const sib of clusterShields) {
-                this.ghostGraphics.lineStyle(2, colour, 0.15);
+                this.ghostGraphics.lineStyle(2, COLOUR_CLUSTER_VIOLET, 0.15);
                 this.ghostGraphics.beginPath();
                 this.ghostGraphics.moveTo(wx, wy);
                 this.ghostGraphics.lineTo(sib.x, sib.y);
@@ -472,7 +473,7 @@ export class BuildSystem {
             // Heat resistance scales with cluster size (damage split across members)
             const heatResist = Math.round((1 - 1 / totalMembers) * 100);
             this.shieldInfoText.setText(`Cluster: ${totalMembers} shields | ${heatResist}% heat shared`);
-            this.shieldInfoText.setColor('#00e5ff');
+            this.shieldInfoText.setColor('#9966ff');
         } else {
             this.shieldInfoText.setText('Solo shield');
             this.shieldInfoText.setColor('#888888');

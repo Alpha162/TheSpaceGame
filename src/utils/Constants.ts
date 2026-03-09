@@ -67,6 +67,14 @@ export const SHIELD_RESERVE_FIRE_MULTIPLIER = 8;   // drains 8x faster under fir
 export const SHIELD_RESERVE_CHARGE_RATE = 0.0004;  // charge per ms (~2.5s to fill when online)
 export const SHIELD_CLUSTER_OVERLAP_MARGIN = 20;   // px of overlap forgiveness for cluster detection
 
+// Cluster visual constants
+export const COLOUR_CLUSTER_VIOLET = 0x9966ff;
+export const CLUSTER_ARC_SEGMENTS = 24;
+export const CLUSTER_ARC_AMPLITUDE = 12;
+export const CLUSTER_ARC_SPEED = 2.5;
+export const CLUSTER_MEMBRANE_MARGIN = 15;
+export const CLUSTER_MEMBRANE_SAMPLES = 12;
+
 // Capacitor constants
 export const CAPACITOR_HEALTH = 60;
 export const CAPACITOR_RADIUS = 11;
