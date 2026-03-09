@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CombatSystem } from '../systems/CombatSystem';
 import {
-    COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_RED
+    COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_RED, UI_SCALE
 } from '../utils/Constants';
 
 export class SpawnPanel {
@@ -14,33 +14,34 @@ export class SpawnPanel {
     constructor(scene: Phaser.Scene, combatSystem: CombatSystem) {
         this.combatSystem = combatSystem;
 
-        const panelX = scene.scale.width - 174;
-        const panelY = scene.scale.height - 70;
-        const panelW = 170;
-        const panelH = 64;
+        const s = UI_SCALE;
+        const panelX = scene.scale.width - 174 * s;
+        const panelY = scene.scale.height - 70 * s;
+        const panelW = 170 * s;
+        const panelH = 64 * s;
 
         // Background panel
         const bg = scene.add.graphics();
         bg.setScrollFactor(0);
         bg.setDepth(200);
         bg.fillStyle(COLOUR_PANEL, 0.85);
-        bg.fillRoundedRect(panelX, panelY, panelW, panelH, 4);
-        bg.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
-        bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 4);
+        bg.fillRoundedRect(panelX, panelY, panelW, panelH, 4 * s);
+        bg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 4 * s);
         this.allObjects.push(bg);
 
         // Title
-        const title = scene.add.text(panelX + panelW / 2, panelY + 8, 'ENEMIES', {
+        const title = scene.add.text(panelX + panelW / 2, panelY + 8 * s, 'ENEMIES', {
             fontFamily: 'monospace',
-            fontSize: '9px',
+            fontSize: `${Math.round(9 * s)}px`,
             color: '#ff3d00'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(title);
 
         // Minus button
-        const minusBtnX = panelX + 8;
-        const btnY = panelY + 22;
-        const btnSize = 20;
+        const minusBtnX = panelX + 8 * s;
+        const btnY = panelY + 22 * s;
+        const btnSize = 20 * s;
 
         const minusZone = scene.add.zone(minusBtnX + btnSize / 2, btnY + btnSize / 2, btnSize, btnSize)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
@@ -49,13 +50,13 @@ export class SpawnPanel {
         const minusGfx = scene.add.graphics();
         minusGfx.setScrollFactor(0).setDepth(201);
         minusGfx.fillStyle(COLOUR_PANEL_BORDER, 0.6);
-        minusGfx.fillRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2);
-        minusGfx.lineStyle(1, COLOUR_PANEL_BORDER, 0.8);
-        minusGfx.strokeRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2);
+        minusGfx.fillRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2 * s);
+        minusGfx.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.8);
+        minusGfx.strokeRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2 * s);
         this.allObjects.push(minusGfx);
 
         const minusText = scene.add.text(minusBtnX + btnSize / 2, btnY + btnSize / 2, '-', {
-            fontFamily: 'monospace', fontSize: '14px', color: '#ffffff'
+            fontFamily: 'monospace', fontSize: `${Math.round(14 * s)}px`, color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(minusText);
 
@@ -65,13 +66,13 @@ export class SpawnPanel {
         });
 
         // Count display
-        this.countText = scene.add.text(panelX + panelW / 2 - 16, btnY + btnSize / 2, `${this.spawnCount}`, {
-            fontFamily: 'monospace', fontSize: '14px', color: '#ffffff'
+        this.countText = scene.add.text(panelX + panelW / 2 - 16 * s, btnY + btnSize / 2, `${this.spawnCount}`, {
+            fontFamily: 'monospace', fontSize: `${Math.round(14 * s)}px`, color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(this.countText);
 
         // Plus button
-        const plusBtnX = panelX + panelW / 2 - 16 + 18;
+        const plusBtnX = panelX + panelW / 2 - 16 * s + 18 * s;
 
         const plusZone = scene.add.zone(plusBtnX + btnSize / 2, btnY + btnSize / 2, btnSize, btnSize)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
@@ -80,13 +81,13 @@ export class SpawnPanel {
         const plusGfx = scene.add.graphics();
         plusGfx.setScrollFactor(0).setDepth(201);
         plusGfx.fillStyle(COLOUR_PANEL_BORDER, 0.6);
-        plusGfx.fillRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2);
-        plusGfx.lineStyle(1, COLOUR_PANEL_BORDER, 0.8);
-        plusGfx.strokeRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2);
+        plusGfx.fillRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2 * s);
+        plusGfx.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.8);
+        plusGfx.strokeRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2 * s);
         this.allObjects.push(plusGfx);
 
         const plusText = scene.add.text(plusBtnX + btnSize / 2, btnY + btnSize / 2, '+', {
-            fontFamily: 'monospace', fontSize: '14px', color: '#ffffff'
+            fontFamily: 'monospace', fontSize: `${Math.round(14 * s)}px`, color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(plusText);
 
@@ -96,19 +97,19 @@ export class SpawnPanel {
         });
 
         // Spawn button
-        const spawnBtnX = plusBtnX + btnSize + 8;
-        const spawnBtnW = panelX + panelW - spawnBtnX - 8;
+        const spawnBtnX = plusBtnX + btnSize + 8 * s;
+        const spawnBtnW = panelX + panelW - spawnBtnX - 8 * s;
 
         const spawnGfx = scene.add.graphics();
         spawnGfx.setScrollFactor(0).setDepth(201);
         spawnGfx.fillStyle(COLOUR_RED, 0.3);
-        spawnGfx.fillRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2);
-        spawnGfx.lineStyle(1, COLOUR_RED, 0.6);
-        spawnGfx.strokeRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2);
+        spawnGfx.fillRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2 * s);
+        spawnGfx.lineStyle(1 * s, COLOUR_RED, 0.6);
+        spawnGfx.strokeRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2 * s);
         this.allObjects.push(spawnGfx);
 
         const spawnText = scene.add.text(spawnBtnX + spawnBtnW / 2, btnY + btnSize / 2, 'SPAWN', {
-            fontFamily: 'monospace', fontSize: '10px', color: '#ff3d00'
+            fontFamily: 'monospace', fontSize: `${Math.round(10 * s)}px`, color: '#ff3d00'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(spawnText);
 
@@ -123,8 +124,8 @@ export class SpawnPanel {
         spawnZone.on('pointerout', () => spawnText.setColor('#ff3d00'));
 
         // Active enemy count display
-        this.enemyCountText = scene.add.text(panelX + panelW / 2, panelY + panelH - 12, 'Active: 0', {
-            fontFamily: 'monospace', fontSize: '9px', color: '#888888'
+        this.enemyCountText = scene.add.text(panelX + panelW / 2, panelY + panelH - 12 * s, 'Active: 0', {
+            fontFamily: 'monospace', fontSize: `${Math.round(9 * s)}px`, color: '#888888'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(this.enemyCountText);
     }

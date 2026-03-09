@@ -22,7 +22,8 @@ import {
     MISSILE_COST, MISSILE_RADIUS, MISSILE_POWER,
     MINER_COST, MINER_RADIUS, MINER_POWER, MINER_RANGE,
     UPGRADE_COST_FRACTION,
-    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER
+    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER,
+    UI_SCALE
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
@@ -132,15 +133,16 @@ export class BuildSystem {
         const y = pointer.y;
         const viewW = this.scene.scale.width;
         const viewH = this.scene.scale.height;
+        const s = UI_SCALE;
 
         // HUD top bar
-        if (x >= 4 && x <= viewW - 4 && y >= 4 && y <= 56) return true;
+        if (x >= 4 * s && x <= viewW - 4 * s && y >= 4 * s && y <= 56 * s) return true;
 
         // Build menu bottom-left panel (wider now with 7 buttons)
-        if (x >= 4 && x <= 640 && y >= viewH - 70 && y <= viewH - 6) return true;
+        if (x >= 4 * s && x <= 640 * s && y >= viewH - 70 * s && y <= viewH - 6 * s) return true;
 
         // Spawn panel bottom-right
-        if (x >= viewW - 174 && x <= viewW - 4 && y >= viewH - 70 && y <= viewH - 6) return true;
+        if (x >= viewW - 174 * s && x <= viewW - 4 * s && y >= viewH - 70 * s && y <= viewH - 6 * s) return true;
 
         return false;
     }

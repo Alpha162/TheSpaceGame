@@ -192,22 +192,23 @@ export class GameScene extends Phaser.Scene {
 
     private createPauseButton(): void {
         const viewW = this.scale.width;
+        const s = (window.devicePixelRatio || 1);
 
         // Pause button
         const btnBg = this.add.graphics();
         btnBg.setScrollFactor(0).setDepth(200);
         btnBg.fillStyle(COLOUR_PANEL, 0.85);
-        btnBg.fillRoundedRect(viewW - 80, 4, 76, 28, 4);
-        btnBg.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
-        btnBg.strokeRoundedRect(viewW - 80, 4, 76, 28, 4);
+        btnBg.fillRoundedRect(viewW - 80 * s, 4 * s, 76 * s, 28 * s, 4 * s);
+        btnBg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        btnBg.strokeRoundedRect(viewW - 80 * s, 4 * s, 76 * s, 28 * s, 4 * s);
 
-        this.pauseButton = this.add.text(viewW - 42, 18, 'PAUSE', {
+        this.pauseButton = this.add.text(viewW - 42 * s, 18 * s, 'PAUSE', {
             fontFamily: 'monospace',
-            fontSize: '11px',
+            fontSize: `${Math.round(11 * s)}px`,
             color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
 
-        const pauseZone = this.add.zone(viewW - 42, 18, 76, 28)
+        const pauseZone = this.add.zone(viewW - 42 * s, 18 * s, 76 * s, 28 * s)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
 
         pauseZone.on('pointerdown', () => this.togglePause());
@@ -221,7 +222,7 @@ export class GameScene extends Phaser.Scene {
 
         this.pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2, 'PAUSED', {
             fontFamily: 'monospace',
-            fontSize: '48px',
+            fontSize: `${Math.round(48 * s)}px`,
             color: '#00e5ff',
             fontStyle: 'bold'
         }).setScrollFactor(0).setDepth(301).setOrigin(0.5).setVisible(false);

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COLOUR_WHITE } from '../utils/Constants';
+import { COLOUR_WHITE, UI_SCALE } from '../utils/Constants';
 
 export class MenuScene extends Phaser.Scene {
     constructor() {
@@ -9,25 +9,26 @@ export class MenuScene extends Phaser.Scene {
     create(): void {
         const cx = this.scale.width / 2;
         const cy = this.scale.height / 2;
+        const s = UI_SCALE;
 
-        this.add.text(cx, cy - 80, 'NODE DEFENCE', {
+        this.add.text(cx, cy - 80 * s, 'NODE DEFENCE', {
             fontFamily: 'monospace',
-            fontSize: '48px',
+            fontSize: `${Math.round(48 * s)}px`,
             color: '#00e5ff',
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
-        this.add.text(cx, cy - 30, 'A Space Strategy Game', {
+        this.add.text(cx, cy - 30 * s, 'A Space Strategy Game', {
             fontFamily: 'monospace',
-            fontSize: '16px',
+            fontSize: `${Math.round(16 * s)}px`,
             color: '#888888'
         }).setOrigin(0.5);
 
-        const startButton = this.add.text(cx, cy + 60, '[ START GAME ]', {
+        const startButton = this.add.text(cx, cy + 60 * s, '[ START GAME ]', {
             fontFamily: 'monospace',
-            fontSize: '24px',
+            fontSize: `${Math.round(24 * s)}px`,
             color: '#ffffff',
-            padding: { x: 20, y: 10 }
+            padding: { x: 20 * s, y: 10 * s }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         startButton.on('pointerover', () => {
@@ -49,7 +50,7 @@ export class MenuScene extends Phaser.Scene {
             const y = Math.random() * this.scale.height;
             const alpha = 0.2 + Math.random() * 0.5;
             gfx.fillStyle(COLOUR_WHITE, alpha);
-            gfx.fillCircle(x, y, 0.5 + Math.random());
+            gfx.fillCircle(x, y, (0.5 + Math.random()) * s);
         }
         gfx.setDepth(-1);
     }

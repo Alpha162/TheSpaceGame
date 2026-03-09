@@ -3,7 +3,8 @@ import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
 import {
     COLOUR_PANEL, COLOUR_PANEL_BORDER,
-    COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED, COLOUR_PURPLE
+    COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED, COLOUR_PURPLE,
+    UI_SCALE
 } from '../utils/Constants';
 
 export class HUD {
@@ -23,6 +24,7 @@ export class HUD {
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
 
+        const s = UI_SCALE;
         const viewW = scene.scale.width;
 
         // Background panel (taller to fit two rows)
@@ -30,26 +32,26 @@ export class HUD {
         this.bgGraphics.setScrollFactor(0);
         this.bgGraphics.setDepth(200);
         this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
-        this.bgGraphics.fillRoundedRect(4, 4, viewW - 8, 52, 4);
-        this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
-        this.bgGraphics.strokeRoundedRect(4, 4, viewW - 8, 52, 4);
+        this.bgGraphics.fillRoundedRect(4 * s, 4 * s, viewW - 8 * s, 52 * s, 4 * s);
+        this.bgGraphics.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        this.bgGraphics.strokeRoundedRect(4 * s, 4 * s, viewW - 8 * s, 52 * s, 4 * s);
 
         // Row 1: Minerals + Power generation/demand
-        this.mineralText = scene.add.text(16, 10, '', {
+        this.mineralText = scene.add.text(16 * s, 10 * s, '', {
             fontFamily: 'monospace',
-            fontSize: '14px',
+            fontSize: `${Math.round(14 * s)}px`,
             color: '#ffab00'
         }).setScrollFactor(0).setDepth(201);
 
-        this.powerGenText = scene.add.text(160, 10, '', {
+        this.powerGenText = scene.add.text(160 * s, 10 * s, '', {
             fontFamily: 'monospace',
-            fontSize: '14px',
+            fontSize: `${Math.round(14 * s)}px`,
             color: '#00e5ff'
         }).setScrollFactor(0).setDepth(201);
 
-        this.powerDemandText = scene.add.text(310, 10, '', {
+        this.powerDemandText = scene.add.text(310 * s, 10 * s, '', {
             fontFamily: 'monospace',
-            fontSize: '14px',
+            fontSize: `${Math.round(14 * s)}px`,
             color: '#00e5ff'
         }).setScrollFactor(0).setDepth(201);
 
@@ -59,9 +61,9 @@ export class HUD {
         this.powerBar.setDepth(201);
 
         // Row 2: Capacitor storage
-        this.capacitorText = scene.add.text(16, 33, '', {
+        this.capacitorText = scene.add.text(16 * s, 33 * s, '', {
             fontFamily: 'monospace',
-            fontSize: '12px',
+            fontSize: `${Math.round(12 * s)}px`,
             color: '#aa44ff'
         }).setScrollFactor(0).setDepth(201);
 
@@ -107,10 +109,11 @@ export class HUD {
 
         // Power bar
         this.powerBar.clear();
-        const barX = 470;
-        const barY = 11;
-        const barW = 150;
-        const barH = 14;
+        const s = UI_SCALE;
+        const barX = 470 * s;
+        const barY = 11 * s;
+        const barW = 150 * s;
+        const barH = 14 * s;
 
         // Background
         this.powerBar.fillStyle(0x222222, 0.8);
@@ -153,10 +156,10 @@ export class HUD {
             this.capacitorText.setText(`Cap: ${capStored}/${capMax}`);
             this.capacitorText.setVisible(true);
 
-            const capBarX = 160;
-            const capBarY = 35;
-            const capBarW = 120;
-            const capBarH = 10;
+            const capBarX = 160 * s;
+            const capBarY = 35 * s;
+            const capBarW = 120 * s;
+            const capBarH = 10 * s;
 
             // Background
             this.capacitorBar.fillStyle(0x222222, 0.8);

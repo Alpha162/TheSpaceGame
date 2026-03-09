@@ -202,6 +202,9 @@ export const COLOUR_SCOUT = 0x44ff88;     // green-ish
 export const COLOUR_TANK = 0xaa44ff;      // purple
 export const COLOUR_SWARM = 0xffdd00;     // yellow
 
+// UI scale factor (matches devicePixelRatio for crisp rendering)
+export const UI_SCALE = window.devicePixelRatio || 1;
+
 // Mineral pickup constants
 export const MINERAL_PICKUP_TRACTOR_RANGE = 120;  // px — nodes pull pickups within this range
 export const MINERAL_PICKUP_TRACTOR_SPEED = 0.15;  // world units per ms toward node

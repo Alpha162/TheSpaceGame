@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COLOUR_WHITE, COLOUR_RED } from '../utils/Constants';
+import { COLOUR_WHITE, COLOUR_RED, UI_SCALE } from '../utils/Constants';
 
 export class GameOverScene extends Phaser.Scene {
     constructor() {
@@ -9,6 +9,7 @@ export class GameOverScene extends Phaser.Scene {
     create(): void {
         const cx = this.scale.width / 2;
         const cy = this.scale.height / 2;
+        const s = UI_SCALE;
 
         // Starfield background
         const gfx = this.add.graphics();
@@ -16,30 +17,30 @@ export class GameOverScene extends Phaser.Scene {
             const x = Math.random() * this.scale.width;
             const y = Math.random() * this.scale.height;
             gfx.fillStyle(COLOUR_WHITE, 0.15 + Math.random() * 0.3);
-            gfx.fillCircle(x, y, 0.5 + Math.random());
+            gfx.fillCircle(x, y, (0.5 + Math.random()) * s);
         }
         gfx.setDepth(-1);
 
         // Title
-        this.add.text(cx, cy - 60, 'COMMAND HUB DESTROYED', {
+        this.add.text(cx, cy - 60 * s, 'COMMAND HUB DESTROYED', {
             fontFamily: 'monospace',
-            fontSize: '32px',
+            fontSize: `${Math.round(32 * s)}px`,
             color: '#' + COLOUR_RED.toString(16).padStart(6, '0'),
             fontStyle: 'bold'
         }).setOrigin(0.5);
 
         this.add.text(cx, cy, 'Your network has fallen.', {
             fontFamily: 'monospace',
-            fontSize: '16px',
+            fontSize: `${Math.round(16 * s)}px`,
             color: '#888888'
         }).setOrigin(0.5);
 
         // Restart button
-        const restartButton = this.add.text(cx, cy + 70, '[ RESTART ]', {
+        const restartButton = this.add.text(cx, cy + 70 * s, '[ RESTART ]', {
             fontFamily: 'monospace',
-            fontSize: '24px',
+            fontSize: `${Math.round(24 * s)}px`,
             color: '#ffffff',
-            padding: { x: 20, y: 10 }
+            padding: { x: 20 * s, y: 10 * s }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         restartButton.on('pointerover', () => restartButton.setColor('#00e5ff'));
@@ -49,11 +50,11 @@ export class GameOverScene extends Phaser.Scene {
         });
 
         // Menu button
-        const menuButton = this.add.text(cx, cy + 120, '[ MAIN MENU ]', {
+        const menuButton = this.add.text(cx, cy + 120 * s, '[ MAIN MENU ]', {
             fontFamily: 'monospace',
-            fontSize: '18px',
+            fontSize: `${Math.round(18 * s)}px`,
             color: '#666666',
-            padding: { x: 20, y: 10 }
+            padding: { x: 20 * s, y: 10 * s }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         menuButton.on('pointerover', () => menuButton.setColor('#00e5ff'));
