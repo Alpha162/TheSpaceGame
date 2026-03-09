@@ -8,7 +8,7 @@ import { Laser } from '../entities/turrets/Laser';
 import { Missile } from '../entities/turrets/Missile';
 import { MineralMiner } from '../entities/miners/MineralMiner';
 import { PowerLink } from '../entities/PowerLink';
-import { MAX_POWER_LINK_LENGTH, POWER_TICK_INTERVAL_MS, PowerPriority } from '../utils/Constants';
+import { MAX_POWER_LINK_LENGTH, POWER_TICK_INTERVAL_MS, PowerPriority, RELAY_MAX_CONNECTIONS, HUB_MAX_CONNECTIONS } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 import { ShieldClusterManager } from './ShieldClusterManager';
 import type { IClusterShield } from './ShieldClusterManager';
@@ -79,15 +79,15 @@ export class PowerNetwork {
         if (this.adjacency.has(node)) return [];
         this.adjacency.set(node, new Set());
 
-        // Auto-connect to nearby nodes
+        // Auto-connect to nearby nodes that pass connection rules
         const newLinks: PowerLink[] = [];
         for (const existing of this.adjacency.keys()) {
             if (existing === node) continue;
-            const dist = distanceBetween(node.x, node.y, existing.x, existing.y);
-            if (dist <= MAX_POWER_LINK_LENGTH) {
+            if (this.canLink(node, existing)) {
                 this.addLink(node, existing);
                 if (this.scene) {
                     const link = new PowerLink(this.scene, node, existing);
+                    link.isBackbone = this.isAnchorNode(node) && this.isAnchorNode(existing);
                     this.links.push(link);
                     newLinks.push(link);
                 }
@@ -122,6 +122,49 @@ export class PowerNetwork {
     private addLink(a: GameNode, b: GameNode): void {
         this.adjacency.get(a)?.add(b);
         this.adjacency.get(b)?.add(a);
+    }
+
+    /** Returns true if the node is a relay or hub (can serve as anchor for other nodes). */
+    isAnchorNode(node: GameNode): boolean {
+        return node instanceof PowerRelay || node instanceof CommandHub;
+    }
+
+    /** Count non-relay/non-hub connections on an anchor node. */
+    getNonRelayConnectionCount(anchor: GameNode): number {
+        const neighbors = this.adjacency.get(anchor);
+        if (!neighbors) return 0;
+        let count = 0;
+        for (const n of neighbors) {
+            if (!this.isAnchorNode(n)) count++;
+        }
+        return count;
+    }
+
+    /** Get the max non-relay connections for an anchor node. */
+    private getAnchorCapacity(node: GameNode): number {
+        if (node instanceof CommandHub) return HUB_MAX_CONNECTIONS;
+        if (node instanceof PowerRelay) return RELAY_MAX_CONNECTIONS;
+        return 0;
+    }
+
+    /** Check if two nodes can link: distance, type rules, and capacity. */
+    canLink(a: GameNode, b: GameNode): boolean {
+        const dist = distanceBetween(a.x, a.y, b.x, b.y);
+        if (dist > MAX_POWER_LINK_LENGTH) return false;
+
+        const aIsAnchor = this.isAnchorNode(a);
+        const bIsAnchor = this.isAnchorNode(b);
+
+        // At least one side must be an anchor (relay or hub)
+        if (!aIsAnchor && !bIsAnchor) return false;
+
+        // Anchor-to-anchor: always allowed (relay chains, hub-to-relay)
+        if (aIsAnchor && bIsAnchor) return true;
+
+        // One anchor, one functional node: check capacity on the anchor side
+        const anchor = aIsAnchor ? a : b;
+        const capacity = this.getAnchorCapacity(anchor);
+        return this.getNonRelayConnectionCount(anchor) < capacity;
     }
 
     updateConnectivity(): void {
@@ -226,6 +269,17 @@ export class PowerNetwork {
             }
         }
 
+        // Update relay connection slot counts
+        for (const node of this.adjacency.keys()) {
+            if (node instanceof PowerRelay) {
+                const newCount = this.getNonRelayConnectionCount(node);
+                if (node.connectedNonRelayCount !== newCount) {
+                    node.connectedNonRelayCount = newCount;
+                    node.refreshVisuals();
+                }
+            }
+        }
+
         // Update node states
         for (const node of this.adjacency.keys()) {
             if (node === this.hub) continue;
@@ -324,6 +378,7 @@ export class PowerNetwork {
 
             const a = link.getNodeA();
             const b = link.getNodeB();
+            link.isBackbone = this.isAnchorNode(a) && this.isAnchorNode(b);
             const isTreeEdge = parent.get(a) === b || parent.get(b) === a;
             const aCarries = powerCarrying.has(a) || powerSources.has(a);
             const bCarries = powerCarrying.has(b) || powerSources.has(b);

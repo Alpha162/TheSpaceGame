@@ -15,6 +15,8 @@ export class PowerLink {
     // sourceNode is the node closer to the hub (lower BFS distance)
     private sourceNode: GameNode;
     private sinkNode: GameNode;
+    /** True if both endpoints are anchor nodes (relay/hub) — backbone link */
+    isBackbone = false;
 
     constructor(scene: Phaser.Scene, nodeA: GameNode, nodeB: GameNode) {
         this.nodeA = nodeA;
@@ -96,13 +98,13 @@ export class PowerLink {
         switch (this.state) {
             case 'healthy':
                 colour = COLOUR_CYAN;
-                alpha = 0.7;
-                lineWidth = 2;
+                alpha = this.isBackbone ? 0.85 : 0.5;
+                lineWidth = this.isBackbone ? 2.5 : 1.5;
                 break;
             case 'strained':
                 colour = COLOUR_AMBER;
-                alpha = 0.6;
-                lineWidth = 2;
+                alpha = this.isBackbone ? 0.7 : 0.45;
+                lineWidth = this.isBackbone ? 2.5 : 1.5;
                 break;
             case 'offline':
                 colour = COLOUR_GREY;
@@ -118,9 +120,10 @@ export class PowerLink {
         this.graphics.lineTo(bx, by);
         this.graphics.strokePath();
 
-        // Glow line (thicker, more transparent)
+        // Glow line (thicker, more transparent) — wider for backbone
         if (this.state !== 'offline') {
-            this.graphics.lineStyle(lineWidth + 3, colour, alpha * 0.15);
+            const glowExtra = this.isBackbone ? 4 : 3;
+            this.graphics.lineStyle(lineWidth + glowExtra, colour, alpha * 0.15);
             this.graphics.beginPath();
             this.graphics.moveTo(ax, ay);
             this.graphics.lineTo(bx, by);
@@ -130,14 +133,15 @@ export class PowerLink {
         // Energy pulse particles flowing from source to sink
         // Only show pulses on links that carry power to a downstream consumer
         if (this.state !== 'offline' && this._showPulses) {
-            const pulseCount = 2;
+            const pulseCount = this.isBackbone ? 3 : 2;
+            const pulseSize = this.isBackbone ? 3.5 : 2.5;
             for (let i = 0; i < pulseCount; i++) {
                 const t = (this.pulseOffset + i / pulseCount) % 1;
                 const px = ax + (bx - ax) * t;
                 const py = ay + (by - ay) * t;
                 const pulseAlpha = Math.sin(t * Math.PI) * alpha;
                 this.graphics.fillStyle(colour, pulseAlpha);
-                this.graphics.fillCircle(px, py, 3);
+                this.graphics.fillCircle(px, py, pulseSize);
             }
         }
     }

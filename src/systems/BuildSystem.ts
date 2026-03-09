@@ -25,8 +25,10 @@ import {
     COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER,
     SHIELD_BUBBLE_MAX_RADIUS, SHIELD_CLUSTER_OVERLAP_MARGIN,
     COLOUR_CLUSTER_VIOLET,
+    RELAY_MAX_CONNECTIONS, HUB_MAX_CONNECTIONS,
     UI_SCALE
 } from '../utils/Constants';
+import { CommandHub } from '../entities/CommandHub';
 import { distanceBetween } from '../utils/Helpers';
 
 export type BuildableType = 'relay' | 'shield' | 'capacitor' | 'blaster' | 'laser' | 'missile' | 'miner';
@@ -336,13 +338,32 @@ export class BuildSystem {
             }
         }
 
-        // Draw potential connections
+        // Draw potential connections (only to valid targets per relay rules)
         const allNodes = this.powerNetwork.getAllNodes();
+        const isPlacingRelay = this.activeBuildType === 'relay';
         for (const node of allNodes) {
             const dist = distanceBetween(wx, wy, node.x, node.y);
-            if (dist <= MAX_POWER_LINK_LENGTH) {
+            if (dist > MAX_POWER_LINK_LENGTH) continue;
+
+            // Check if this connection would be valid
+            let validLink = false;
+            if (isPlacingRelay) {
+                validLink = true; // relays connect to anything
+            } else if (this.powerNetwork.isAnchorNode(node)) {
+                const capacity = node instanceof CommandHub ? HUB_MAX_CONNECTIONS : RELAY_MAX_CONNECTIONS;
+                validLink = this.powerNetwork.getNonRelayConnectionCount(node) < capacity;
+            }
+
+            if (validLink) {
                 const linkColour = this.isValidPlacement ? COLOUR_CYAN : COLOUR_RED;
                 this.rangeGraphics.lineStyle(1, linkColour, 0.3);
+                this.rangeGraphics.beginPath();
+                this.rangeGraphics.moveTo(wx, wy);
+                this.rangeGraphics.lineTo(node.x, node.y);
+                this.rangeGraphics.strokePath();
+            } else if (this.powerNetwork.isAnchorNode(node)) {
+                // Show full relay connections in dim red
+                this.rangeGraphics.lineStyle(1, COLOUR_RED, 0.15);
                 this.rangeGraphics.beginPath();
                 this.rangeGraphics.moveTo(wx, wy);
                 this.rangeGraphics.lineTo(node.x, node.y);
@@ -491,12 +512,27 @@ export class BuildSystem {
             if (dist < MIN_NODE_DISTANCE) return false;
         }
 
+        const isPlacingRelay = this.activeBuildType === 'relay';
+
+        // Check connection: relays can connect to any node, others need a relay/hub with capacity
         let hasConnection = false;
         for (const node of allNodes) {
             const dist = distanceBetween(x, y, node.x, node.y);
-            if (dist <= MAX_POWER_LINK_LENGTH) {
+            if (dist > MAX_POWER_LINK_LENGTH) continue;
+
+            if (isPlacingRelay) {
+                // Relays can connect to anything in range
                 hasConnection = true;
                 break;
+            } else {
+                // Non-relay nodes need a relay or hub with available capacity
+                if (this.powerNetwork.isAnchorNode(node)) {
+                    const capacity = node instanceof CommandHub ? HUB_MAX_CONNECTIONS : RELAY_MAX_CONNECTIONS;
+                    if (this.powerNetwork.getNonRelayConnectionCount(node) < capacity) {
+                        hasConnection = true;
+                        break;
+                    }
+                }
             }
         }
         if (!hasConnection) return false;
