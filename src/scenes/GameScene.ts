@@ -37,6 +37,7 @@ export class GameScene extends Phaser.Scene {
     private dragStartY = 0;
     private dragCamStartX = 0;
     private dragCamStartY = 0;
+    private dragButton: 'right' | null = null;
     private isPaused = false;
     private pauseOverlay!: Phaser.GameObjects.Graphics;
     private pauseText!: Phaser.GameObjects.Text;
@@ -152,12 +153,18 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
-    private startDrag(pointer: Phaser.Input.Pointer): void {
+    private startDrag(pointer: Phaser.Input.Pointer, button: 'right'): void {
         this.isDragging = true;
+        this.dragButton = button;
         this.dragStartX = pointer.x;
         this.dragStartY = pointer.y;
         this.dragCamStartX = this.cameras.main.scrollX;
         this.dragCamStartY = this.cameras.main.scrollY;
+    }
+
+    private stopDrag(): void {
+        this.isDragging = false;
+        this.dragButton = null;
     }
 
     private createPauseButton(): void {

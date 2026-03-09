@@ -24,6 +24,12 @@ export class MenuScene extends Phaser.Scene {
             color: '#888888'
         }).setOrigin(0.5);
 
+        this.add.text(cx, cy + 8 * s, 'Controls: WASD move · Wheel zoom · Right-drag pan · Right-click cancel build', {
+            fontFamily: 'monospace',
+            fontSize: `${Math.round(12 * s)}px`,
+            color: '#00e5ff'
+        }).setOrigin(0.5);
+
         const startButton = this.add.text(cx, cy + 60 * s, '[ START GAME ]', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(24 * s)}px`,
