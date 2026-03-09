@@ -74,6 +74,14 @@ export class CombatSystem {
                     const sy = y + (Math.random() - 0.5) * 20;
                     this.enemies.push(new Enemy(this.scene, sx, sy, hub.x, hub.y, 'swarm'));
                 }
+            } else if (type === 'drone') {
+                // Drones spawn in flocks for visible flocking behavior
+                const groupSize = 6 + Math.floor(Math.random() * 3); // 6-8
+                for (let j = 0; j < groupSize; j++) {
+                    const sx = x + (Math.random() - 0.5) * 30;
+                    const sy = y + (Math.random() - 0.5) * 30;
+                    this.enemies.push(new Enemy(this.scene, sx, sy, hub.x, hub.y, 'drone'));
+                }
             } else {
                 this.enemies.push(new Enemy(this.scene, x, y, hub.x, hub.y, type));
             }
