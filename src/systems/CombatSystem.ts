@@ -214,6 +214,22 @@ export class CombatSystem {
                 }
             }
 
+            // When blocked by a shield, retarget to the blocking shield so the
+            // enemy attacks it instead of standing idle against the bubble wall.
+            let attackTarget = nearestNode;
+            let attackDist = nearestDist;
+
+            if (shieldTarget && (enemy.blockedByShield || enemy.moveClamp < Infinity)) {
+                attackTarget = shieldTarget;
+                attackDist = distanceBetween(enemy.x, enemy.y, shieldTarget.x, shieldTarget.y);
+                enemy.setTarget(shieldTarget.x, shieldTarget.y);
+            } else if (hitHubShield) {
+                // Hub shield blocks the path — attack the hub (damage absorbed by shield in flight)
+                attackTarget = hub;
+                attackDist = distanceBetween(enemy.x, enemy.y, hub.x, hub.y);
+                enemy.setTarget(hub.x, hub.y);
+            }
+
             enemy.update(delta);
 
             // Re-check shield contact after movement
@@ -231,9 +247,9 @@ export class CombatSystem {
             }
 
             // Attack logic — enemies fire projectiles at range; shields intercept in flight
-            if (enemy.canAttack() && nearestNode && nearestDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
+            if (enemy.canAttack() && attackTarget && attackDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
                 const damage = enemy.performAttack();
-                this.fireEnemyProjectile(enemy.x, enemy.y, nearestNode, damage);
+                this.fireEnemyProjectile(enemy.x, enemy.y, attackTarget, damage);
             }
         }
 
