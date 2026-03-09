@@ -214,8 +214,9 @@ export class CombatSystem {
             }
         }
 
-        // Collect drones for flocking
+        // Collect flocking peers by type
         const drones = this.enemies.filter(e => e.alive && e.enemyType === 'drone');
+        const swarm = this.enemies.filter(e => e.alive && e.enemyType === 'swarm');
 
         // Update enemies
         for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -326,7 +327,9 @@ export class CombatSystem {
             if (enemy.enemyType === 'scout') {
                 enemy.computeScoutEvasion(friendlyProjectiles);
             } else if (enemy.enemyType === 'drone') {
-                enemy.computeDroneFlocking(drones, friendlyProjectiles);
+                enemy.computeFlocking(drones, friendlyProjectiles);
+            } else if (enemy.enemyType === 'swarm') {
+                enemy.computeFlocking(swarm, friendlyProjectiles);
             }
 
             enemy.update(delta);
