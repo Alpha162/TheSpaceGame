@@ -4,8 +4,13 @@ import { PowerRelay } from '../entities/support/PowerRelay';
 import { Capacitor } from '../entities/support/Capacitor';
 import { Shield } from '../entities/defence/Shield';
 import { Blaster } from '../entities/turrets/Blaster';
+import { Laser } from '../entities/turrets/Laser';
+import { Missile } from '../entities/turrets/Missile';
+import { MineralMiner } from '../entities/miners/MineralMiner';
+import { MineralAsteroid } from '../entities/MineralAsteroid';
 import { ResourceManager } from './ResourceManager';
 import { CombatSystem } from './CombatSystem';
+import { MineralManager } from './MineralManager';
 import { PowerNetwork } from './PowerNetwork';
 import {
     MAX_POWER_LINK_LENGTH, MIN_NODE_DISTANCE,
@@ -13,12 +18,16 @@ import {
     SHIELD_COST, SHIELD_RADIUS, SHIELD_POWER_DEPLOY,
     CAPACITOR_COST, CAPACITOR_RADIUS, CAPACITOR_POWER_CHARGE,
     BLASTER_COST, BLASTER_RADIUS, BLASTER_POWER,
-    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY,
+    LASER_COST, LASER_RADIUS, LASER_POWER,
+    MISSILE_COST, MISSILE_RADIUS, MISSILE_POWER,
+    MINER_COST, MINER_RADIUS, MINER_POWER, MINER_RANGE,
+    UPGRADE_COST_FRACTION,
+    COLOUR_CYAN, COLOUR_RED, COLOUR_GREY, COLOUR_AMBER,
     VIEWPORT_WIDTH, VIEWPORT_HEIGHT
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
 
-export type BuildableType = 'relay' | 'shield' | 'capacitor' | 'blaster';
+export type BuildableType = 'relay' | 'shield' | 'capacitor' | 'blaster' | 'laser' | 'missile' | 'miner';
 
 interface BuildableConfig {
     cost: number;
@@ -28,10 +37,13 @@ interface BuildableConfig {
 }
 
 export const BUILDABLE_CONFIGS: Record<BuildableType, BuildableConfig> = {
-    relay: { cost: RELAY_COST, radius: RELAY_RADIUS, powerConsumption: RELAY_POWER, label: 'Power Relay' },
+    relay: { cost: RELAY_COST, radius: RELAY_RADIUS, powerConsumption: RELAY_POWER, label: 'Relay' },
     shield: { cost: SHIELD_COST, radius: SHIELD_RADIUS, powerConsumption: SHIELD_POWER_DEPLOY, label: 'Shield' },
     capacitor: { cost: CAPACITOR_COST, radius: CAPACITOR_RADIUS, powerConsumption: CAPACITOR_POWER_CHARGE, label: 'Capacitor' },
-    blaster: { cost: BLASTER_COST, radius: BLASTER_RADIUS, powerConsumption: BLASTER_POWER, label: 'Blaster' }
+    blaster: { cost: BLASTER_COST, radius: BLASTER_RADIUS, powerConsumption: BLASTER_POWER, label: 'Blaster' },
+    miner: { cost: MINER_COST, radius: MINER_RADIUS, powerConsumption: MINER_POWER, label: 'Miner' },
+    laser: { cost: LASER_COST, radius: LASER_RADIUS, powerConsumption: LASER_POWER, label: 'Laser' },
+    missile: { cost: MISSILE_COST, radius: MISSILE_RADIUS, powerConsumption: MISSILE_POWER, label: 'Missile' }
 };
 
 export class BuildSystem {
@@ -45,6 +57,8 @@ export class BuildSystem {
     private placedNodes: GameNode[] = [];
     private selectedNode: GameNode | null = null;
     private combatSystem: CombatSystem | null = null;
+    private mineralManager: MineralManager | null = null;
+    private asteroids: MineralAsteroid[] = [];
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.scene = scene;
@@ -106,6 +120,11 @@ export class BuildSystem {
             scene.input.keyboard.on('keydown-X', () => {
                 this.deleteSelected();
             });
+
+            // U to upgrade selected node
+            scene.input.keyboard.on('keydown-U', () => {
+                this.upgradeSelected();
+            });
         }
     }
 
@@ -116,8 +135,8 @@ export class BuildSystem {
         // HUD top bar
         if (x >= 4 && x <= VIEWPORT_WIDTH - 4 && y >= 4 && y <= 56) return true;
 
-        // Build menu bottom-left panel
-        if (x >= 4 && x <= 378 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
+        // Build menu bottom-left panel (wider now with 7 buttons)
+        if (x >= 4 && x <= 640 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
 
         // Spawn panel bottom-right
         if (x >= VIEWPORT_WIDTH - 174 && x <= VIEWPORT_WIDTH - 4 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
@@ -127,6 +146,14 @@ export class BuildSystem {
 
     setCombatSystem(combatSystem: CombatSystem): void {
         this.combatSystem = combatSystem;
+    }
+
+    setMineralManager(mm: MineralManager): void {
+        this.mineralManager = mm;
+    }
+
+    setAsteroids(asteroids: MineralAsteroid[]): void {
+        this.asteroids = asteroids;
     }
 
     startBuild(type: BuildableType): void {
@@ -166,7 +193,6 @@ export class BuildSystem {
             if (!node.isFullyConstructed()) {
                 const justFinished = node.updateConstruction();
                 if (justFinished) {
-                    // Node just finished constructing, integrate into power network
                     this.powerNetwork.updateConnectivity();
                 }
             }
@@ -183,7 +209,6 @@ export class BuildSystem {
     private trySelect(pointer: Phaser.Input.Pointer): void {
         const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
 
-        // Find the closest placed node within click range
         let closest: GameNode | null = null;
         let closestDist = Infinity;
 
@@ -211,32 +236,42 @@ export class BuildSystem {
         }
     }
 
+    private getNodeBuildCost(node: GameNode): number {
+        if (node instanceof Shield) return SHIELD_COST;
+        if (node instanceof Capacitor) return CAPACITOR_COST;
+        if (node instanceof Blaster) return BLASTER_COST;
+        if (node instanceof Laser) return LASER_COST;
+        if (node instanceof Missile) return MISSILE_COST;
+        if (node instanceof MineralMiner) return MINER_COST;
+        return RELAY_COST;
+    }
+
     private deleteSelected(): void {
         if (!this.selectedNode) return;
 
         const node = this.selectedNode;
-
-        // Determine refund based on node type
-        let refundCost = RELAY_COST; // default
-        if (node instanceof Shield) {
-            refundCost = SHIELD_COST;
-        } else if (node instanceof Capacitor) {
-            refundCost = CAPACITOR_COST;
-        } else if (node instanceof Blaster) {
-            refundCost = BLASTER_COST;
-        }
+        const refundCost = this.getNodeBuildCost(node);
         this.resourceManager.earn(refundCost);
 
-        // Remove from power network
         this.powerNetwork.removeNode(node);
 
-        // Remove from placed nodes
         const idx = this.placedNodes.indexOf(node);
         if (idx >= 0) this.placedNodes.splice(idx, 1);
 
-        // Destroy the game object
         this.selectedNode = null;
         node.destroy();
+    }
+
+    private upgradeSelected(): void {
+        if (!this.selectedNode) return;
+        const node = this.selectedNode;
+
+        if (!node.canUpgrade()) return;
+
+        const upgradeCost = Math.round(this.getNodeBuildCost(node) * UPGRADE_COST_FRACTION);
+        if (!this.resourceManager.spend(upgradeCost)) return;
+
+        node.upgrade();
     }
 
     private drawGhost(wx: number, wy: number): void {
@@ -261,6 +296,24 @@ export class BuildSystem {
         this.rangeGraphics.lineStyle(1, COLOUR_GREY, 0.2);
         this.rangeGraphics.strokeCircle(wx, wy, MAX_POWER_LINK_LENGTH);
 
+        // For miners, show mining range and highlight nearby asteroids
+        if (this.activeBuildType === 'miner') {
+            this.rangeGraphics.lineStyle(1, COLOUR_AMBER, 0.2);
+            this.rangeGraphics.strokeCircle(wx, wy, MINER_RANGE);
+
+            for (const asteroid of this.asteroids) {
+                if (asteroid.depleted) continue;
+                const dist = distanceBetween(wx, wy, asteroid.x, asteroid.y);
+                if (dist <= MINER_RANGE) {
+                    this.rangeGraphics.lineStyle(1.5, COLOUR_AMBER, 0.5);
+                    this.rangeGraphics.beginPath();
+                    this.rangeGraphics.moveTo(wx, wy);
+                    this.rangeGraphics.lineTo(asteroid.x, asteroid.y);
+                    this.rangeGraphics.strokePath();
+                }
+            }
+        }
+
         // Draw potential connections
         const allNodes = this.powerNetwork.getAllNodes();
         for (const node of allNodes) {
@@ -277,17 +330,14 @@ export class BuildSystem {
     }
 
     private validatePlacement(x: number, y: number, config: BuildableConfig): boolean {
-        // Check cost
         if (!this.resourceManager.canAfford(config.cost)) return false;
 
-        // Check overlap with existing nodes
         const allNodes = this.powerNetwork.getAllNodes();
         for (const node of allNodes) {
             const dist = distanceBetween(x, y, node.x, node.y);
             if (dist < MIN_NODE_DISTANCE) return false;
         }
 
-        // Check connection range — must be within range of at least one existing node
         let hasConnection = false;
         for (const node of allNodes) {
             const dist = distanceBetween(x, y, node.x, node.y);
@@ -296,8 +346,22 @@ export class BuildSystem {
                 break;
             }
         }
+        if (!hasConnection) return false;
 
-        return hasConnection;
+        // Miners must be near an asteroid
+        if (this.activeBuildType === 'miner') {
+            let nearAsteroid = false;
+            for (const asteroid of this.asteroids) {
+                if (asteroid.depleted) continue;
+                if (distanceBetween(x, y, asteroid.x, asteroid.y) <= MINER_RANGE) {
+                    nearAsteroid = true;
+                    break;
+                }
+            }
+            if (!nearAsteroid) return false;
+        }
+
+        return true;
     }
 
     private tryPlace(pointer: Phaser.Input.Pointer): void {
@@ -306,13 +370,9 @@ export class BuildSystem {
         const worldPoint = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
         const config = BUILDABLE_CONFIGS[this.activeBuildType];
 
-        // Re-validate at exact click position
         if (!this.validatePlacement(worldPoint.x, worldPoint.y, config)) return;
-
-        // Spend resources
         if (!this.resourceManager.spend(config.cost)) return;
 
-        // Create node
         let node: GameNode;
         switch (this.activeBuildType) {
             case 'relay':
@@ -330,15 +390,29 @@ export class BuildSystem {
                 node = blaster;
                 break;
             }
+            case 'laser': {
+                const laser = new Laser(this.scene, worldPoint.x, worldPoint.y);
+                if (this.combatSystem) laser.setCombatSystem(this.combatSystem);
+                node = laser;
+                break;
+            }
+            case 'missile': {
+                const missile = new Missile(this.scene, worldPoint.x, worldPoint.y);
+                if (this.combatSystem) missile.setCombatSystem(this.combatSystem);
+                node = missile;
+                break;
+            }
+            case 'miner': {
+                const miner = new MineralMiner(this.scene, worldPoint.x, worldPoint.y);
+                if (this.mineralManager) miner.setMineralManager(this.mineralManager);
+                miner.setAsteroids(this.asteroids);
+                node = miner;
+                break;
+            }
         }
 
-        // Start construction delay
         node.startConstruction();
-
-        // Register in power network (links are created but node won't receive power until constructed)
         this.powerNetwork.addNode(node);
         this.placedNodes.push(node);
-
-        // Keep building mode active for rapid placement
     }
 }

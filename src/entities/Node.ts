@@ -25,6 +25,9 @@ export class GameNode extends Phaser.GameObjects.Container {
     private lastDamageTime = 0;
     private _isRepairing = false;
 
+    // Upgrade state
+    upgraded = false;
+
     constructor(
         scene: Phaser.Scene,
         x: number,
@@ -141,6 +144,18 @@ export class GameNode extends Phaser.GameObjects.Container {
         } else {
             this._isRepairing = false;
         }
+    }
+
+    /** Override in subclasses to apply stat boosts. Returns true if upgrade was applied. */
+    upgrade(): boolean {
+        if (this.upgraded) return false;
+        this.upgraded = true;
+        this.drawNode();
+        return true;
+    }
+
+    canUpgrade(): boolean {
+        return !this.upgraded && this.isFullyConstructed() && this.nodeState !== 'offline';
     }
 
     takeDamage(amount: number): boolean {

@@ -4,6 +4,9 @@ import { PowerRelay } from '../entities/support/PowerRelay';
 import { Capacitor } from '../entities/support/Capacitor';
 import { Shield } from '../entities/defence/Shield';
 import { Blaster } from '../entities/turrets/Blaster';
+import { Laser } from '../entities/turrets/Laser';
+import { Missile } from '../entities/turrets/Missile';
+import { MineralMiner } from '../entities/miners/MineralMiner';
 import { PowerLink } from '../entities/PowerLink';
 import { MAX_POWER_LINK_LENGTH, POWER_TICK_INTERVAL_MS, PowerPriority } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
@@ -598,9 +601,15 @@ export class PowerNetwork {
             }
         }
 
-        // Update blaster turrets every frame
+        // Update turrets and miners every frame
         for (const node of this.adjacency.keys()) {
             if (node instanceof Blaster && node.isFullyConstructed()) {
+                node.update(0, delta);
+            } else if (node instanceof Laser && node.isFullyConstructed()) {
+                node.update(0, delta);
+            } else if (node instanceof Missile && node.isFullyConstructed()) {
+                node.update(0, delta);
+            } else if (node instanceof MineralMiner && node.isFullyConstructed()) {
                 node.update(0, delta);
             }
         }

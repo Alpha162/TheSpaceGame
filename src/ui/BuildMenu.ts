@@ -13,6 +13,9 @@ interface MenuButton {
     height: number;
 }
 
+const BUILD_ORDER: BuildableType[] = ['relay', 'shield', 'capacitor', 'blaster', 'miner', 'laser', 'missile'];
+const KEY_NAMES = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN'];
+
 export class BuildMenu {
     private scene: Phaser.Scene;
     private buildSystem: BuildSystem;
@@ -30,7 +33,9 @@ export class BuildMenu {
         this.bgGraphics.setDepth(200);
 
         const panelY = VIEWPORT_HEIGHT - 70;
-        const panelW = 370;
+        const btnW = 84;
+        const gap = 6;
+        const panelW = BUILD_ORDER.length * (btnW + gap) + gap;
         this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
         this.bgGraphics.fillRoundedRect(4, panelY, panelW, 64, 4);
         this.bgGraphics.lineStyle(1, COLOUR_PANEL_BORDER, 0.6);
@@ -38,36 +43,22 @@ export class BuildMenu {
         this.allObjects.push(this.bgGraphics);
 
         // Build buttons
-        const btnW = 84;
         const btnH = 52;
-        const gap = 6;
         let bx = 12;
-        this.createButton('relay', bx, panelY + 6, btnW, btnH);
-        bx += btnW + gap;
-        this.createButton('shield', bx, panelY + 6, btnW, btnH);
-        bx += btnW + gap;
-        this.createButton('capacitor', bx, panelY + 6, btnW, btnH);
-        bx += btnW + gap;
-        this.createButton('blaster', bx, panelY + 6, btnW, btnH);
+        for (const type of BUILD_ORDER) {
+            this.createButton(type, bx, panelY + 6, btnW, btnH);
+            bx += btnW + gap;
+        }
 
-        // Keyboard shortcuts
+        // Keyboard shortcuts 1-7
         if (scene.input.keyboard) {
-            scene.input.keyboard.on('keydown-ONE', () => {
-                this.buildSystem.startBuild('relay');
-                this.updateButtonStates();
-            });
-            scene.input.keyboard.on('keydown-TWO', () => {
-                this.buildSystem.startBuild('shield');
-                this.updateButtonStates();
-            });
-            scene.input.keyboard.on('keydown-THREE', () => {
-                this.buildSystem.startBuild('capacitor');
-                this.updateButtonStates();
-            });
-            scene.input.keyboard.on('keydown-FOUR', () => {
-                this.buildSystem.startBuild('blaster');
-                this.updateButtonStates();
-            });
+            for (let i = 0; i < BUILD_ORDER.length; i++) {
+                const type = BUILD_ORDER[i];
+                scene.input.keyboard.on(`keydown-${KEY_NAMES[i]}`, () => {
+                    this.buildSystem.startBuild(type);
+                    this.updateButtonStates();
+                });
+            }
             scene.input.keyboard.on('keydown-Q', () => {
                 this.updateButtonStates();
             });
@@ -100,7 +91,6 @@ export class BuildMenu {
         this.buttons.push(button);
         this.allObjects.push(bg, text, costText);
 
-        // Make interactive via zone
         const zone = this.scene.add.zone(x + width / 2, y + height / 2, width, height)
             .setScrollFactor(0)
             .setDepth(203)

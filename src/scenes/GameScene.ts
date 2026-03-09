@@ -4,9 +4,11 @@ import {
     CAMERA_SCROLL_SPEED,
     STAR_LAYER_COUNT, STARS_PER_LAYER, STAR_SIZES, STAR_ALPHAS,
     COLOUR_WHITE,
-    CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP
+    CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP,
+    ASTEROID_COUNT, ASTEROID_MIN_HUB_DIST, ASTEROID_RADIUS
 } from '../utils/Constants';
 import { CommandHub } from '../entities/CommandHub';
+import { MineralAsteroid } from '../entities/MineralAsteroid';
 import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
 import { BuildSystem } from '../systems/BuildSystem';
@@ -27,6 +29,7 @@ export class GameScene extends Phaser.Scene {
     hud!: HUD;
     buildMenu!: BuildMenu;
     spawnPanel!: SpawnPanel;
+    asteroids: MineralAsteroid[] = [];
     starLayers: Phaser.GameObjects.Graphics[] = [];
     private uiObjects: Set<Phaser.GameObjects.GameObject> = new Set();
 
@@ -59,8 +62,13 @@ export class GameScene extends Phaser.Scene {
         this.mineralManager = new MineralManager(this, this.powerNetwork, this.resourceManager);
         this.combatSystem.setMineralManager(this.mineralManager);
 
-        // Cross-wire: build system needs combat system for blaster turrets
+        // Spawn mineral asteroids
+        this.spawnAsteroids();
+
+        // Cross-wire: build system needs combat system for turrets
         this.buildSystem.setCombatSystem(this.combatSystem);
+        this.buildSystem.setMineralManager(this.mineralManager);
+        this.buildSystem.setAsteroids(this.asteroids);
 
         // Game over when hub is destroyed
         this.events.once('hub-destroyed', () => {
@@ -127,6 +135,28 @@ export class GameScene extends Phaser.Scene {
         this.powerNetwork.update(delta);
         this.hud.update();
         this.spawnPanel.update();
+    }
+
+    private spawnAsteroids(): void {
+        const hubX = WORLD_WIDTH / 2;
+        const hubY = WORLD_HEIGHT / 2;
+        const margin = ASTEROID_RADIUS + 10;
+
+        for (let i = 0; i < ASTEROID_COUNT; i++) {
+            let x: number, y: number;
+            let attempts = 0;
+            do {
+                x = margin + Math.random() * (WORLD_WIDTH - margin * 2);
+                y = margin + Math.random() * (WORLD_HEIGHT - margin * 2);
+                attempts++;
+            } while (
+                Math.sqrt((x - hubX) ** 2 + (y - hubY) ** 2) < ASTEROID_MIN_HUB_DIST &&
+                attempts < 100
+            );
+
+            const asteroid = new MineralAsteroid(this, x, y);
+            this.asteroids.push(asteroid);
+        }
     }
 
     private createStarfield(): void {

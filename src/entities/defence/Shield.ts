@@ -57,6 +57,15 @@ export class Shield extends GameNode implements IClusterShield {
         }
     }
 
+    private heatDecayMultiplier = 1;
+
+    upgrade(): boolean {
+        if (!super.upgrade()) return false;
+        this.maxBubbleRadius = Math.round(SHIELD_BUBBLE_MAX_RADIUS * 1.2);
+        this.heatDecayMultiplier = 1.5;
+        return true;
+    }
+
     // IClusterShield interface
     getShieldRadius(): number { return this.bubbleRadius; }
     getHeat(): number { return this.heatLevel; }
@@ -123,7 +132,7 @@ export class Shield extends GameNode implements IClusterShield {
             case 'maintaining':
                 // Heat decay (slower when running on reserve only)
                 if (this.heatLevel > 0) {
-                    const decayMult = powered ? 1 : 0.3;
+                    const decayMult = (powered ? 1 : 0.3) * this.heatDecayMultiplier;
                     this.heatLevel = Math.max(0, this.heatLevel - SHIELD_HEAT_DECAY * decayMult);
                 }
                 break;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Enemy } from '../entities/Enemy';
+import { Enemy, EnemyType } from '../entities/Enemy';
 import { GameNode } from '../entities/Node';
 import { CommandHub } from '../entities/CommandHub';
 import { Shield } from '../entities/defence/Shield';
@@ -9,7 +9,7 @@ import { PowerNetwork } from './PowerNetwork';
 import { BuildSystem } from './BuildSystem';
 import type { MineralManager } from './MineralManager';
 import {
-    WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD, ENEMY_ATTACK_RANGE,
+    WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD,
     ENEMY_PROJECTILE_SPEED, ENEMY_THREAT_WEIGHT,
     COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
@@ -59,11 +59,35 @@ export class CombatSystem {
         const hub = this.powerNetwork.getHub();
         if (!hub) return;
 
+        const types: EnemyType[] = ['drone', 'scout', 'tank', 'swarm'];
+        const weights = [0.4, 0.25, 0.15, 0.2];
+
         for (let i = 0; i < count; i++) {
+            const type = this.weightedRandom(types, weights);
             const { x, y } = this.randomEdgePosition();
-            const enemy = new Enemy(this.scene, x, y, hub.x, hub.y);
-            this.enemies.push(enemy);
+
+            if (type === 'swarm') {
+                // Swarm spawns a group
+                const groupSize = 3 + Math.floor(Math.random() * 3);
+                for (let j = 0; j < groupSize; j++) {
+                    const sx = x + (Math.random() - 0.5) * 20;
+                    const sy = y + (Math.random() - 0.5) * 20;
+                    this.enemies.push(new Enemy(this.scene, sx, sy, hub.x, hub.y, 'swarm'));
+                }
+            } else {
+                this.enemies.push(new Enemy(this.scene, x, y, hub.x, hub.y, type));
+            }
         }
+    }
+
+    private weightedRandom<T>(items: T[], weights: number[]): T {
+        const total = weights.reduce((a, b) => a + b, 0);
+        let r = Math.random() * total;
+        for (let i = 0; i < items.length; i++) {
+            r -= weights[i];
+            if (r <= 0) return items[i];
+        }
+        return items[items.length - 1];
     }
 
     private randomEdgePosition(): { x: number; y: number } {
@@ -161,6 +185,13 @@ export class CombatSystem {
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
             if (!enemy.alive) {
+                // Spawn mineral pickup for kills not handled by projectile hits
+                // (e.g. Laser direct damage, Missile AoE)
+                if (this.mineralManager) {
+                    this.mineralManager.spawnPickup(enemy.x, enemy.y, enemy.reward);
+                } else {
+                    this.resourceManager.earn(enemy.reward);
+                }
                 enemy.destroy();
                 this.enemies.splice(i, 1);
                 continue;
@@ -253,7 +284,7 @@ export class CombatSystem {
             }
 
             // Attack logic — enemies fire projectiles at range; shields intercept in flight
-            if (enemy.canAttack() && attackTarget && attackDist <= ENEMY_ATTACK_RANGE + enemy.radius) {
+            if (enemy.canAttack() && attackTarget && attackDist <= enemy.getAttackRange() + enemy.radius) {
                 const damage = enemy.performAttack();
                 this.fireEnemyProjectile(enemy.x, enemy.y, attackTarget, damage);
             }
@@ -284,14 +315,8 @@ export class CombatSystem {
                     if (!enemy.alive) continue;
                     const dist = distanceBetween(p.x, p.y, enemy.x, enemy.y);
                     if (dist <= enemy.radius + 3) {
-                        const died = enemy.takeDamage(p.damage);
-                        if (died) {
-                            if (this.mineralManager) {
-                                this.mineralManager.spawnPickup(enemy.x, enemy.y, ENEMY_MINERAL_REWARD);
-                            } else {
-                                this.resourceManager.earn(ENEMY_MINERAL_REWARD);
-                            }
-                        }
+                        enemy.takeDamage(p.damage);
+                        // Reward handled in enemy cleanup loop above
                         hit = true;
                         break;
                     }

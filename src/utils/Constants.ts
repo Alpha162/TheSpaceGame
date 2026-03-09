@@ -141,6 +141,67 @@ export const ENEMY_MINERAL_REWARD = 10;   // minerals dropped on death
 export const ENEMY_PROJECTILE_SPEED = 180; // world units per second
 export const ENEMY_THREAT_WEIGHT = 0.6;   // weight for preferring threat targets (0=nearest only, 1=threats only)
 
+// Mineral Asteroid constants
+export const ASTEROID_MINERALS = 500;     // total minerals per asteroid
+export const ASTEROID_COUNT = 10;         // number spawned at game start
+export const ASTEROID_RADIUS = 18;        // visual/collision radius
+export const ASTEROID_MIN_HUB_DIST = 300; // minimum distance from hub center
+
+// Mineral Miner constants
+export const MINER_COST = 60;
+export const MINER_HEALTH = 50;
+export const MINER_RADIUS = 12;
+export const MINER_POWER = 8;
+export const MINER_RANGE = 80;            // must place within this range of an asteroid
+export const MINER_RATE = 3;              // minerals extracted per tick
+export const MINER_TICK_MS = 2000;        // ms between mining ticks
+
+// Laser turret constants
+export const LASER_COST = 80;
+export const LASER_HEALTH = 60;
+export const LASER_RADIUS = 13;
+export const LASER_POWER = 15;
+export const LASER_RANGE = 200;
+export const LASER_DPS = 12;              // damage per second while beam is active
+export const LASER_LOCK_TIME_MS = 500;    // ms to lock onto target before firing
+
+// Missile turret constants (overrides earlier placeholders)
+export const MISSILE_HEALTH = 70;
+export const MISSILE_RADIUS = 14;
+export const MISSILE_RANGE = 180;
+export const MISSILE_DAMAGE = 15;
+export const MISSILE_AOE_RADIUS = 40;
+export const MISSILE_FIRE_RATE = 0.5;     // shots per second
+export const MISSILE_PROJECTILE_SPEED = 120;
+
+// Enemy type configs
+export const SCOUT_HEALTH = 15;
+export const SCOUT_SPEED = 0.08;
+export const SCOUT_DAMAGE = 3;
+export const SCOUT_RADIUS = 4;
+export const SCOUT_REWARD = 5;
+
+export const TANK_HEALTH = 100;
+export const TANK_SPEED = 0.02;
+export const TANK_DAMAGE = 10;
+export const TANK_RADIUS = 10;
+export const TANK_REWARD = 25;
+
+export const SWARM_HEALTH = 10;
+export const SWARM_SPEED = 0.06;
+export const SWARM_DAMAGE = 2;
+export const SWARM_RADIUS = 3;
+export const SWARM_REWARD = 3;
+export const SWARM_GROUP_SIZE = 4;        // spawned per "slot" in a wave
+
+// Upgrade constants
+export const UPGRADE_COST_FRACTION = 0.7; // upgrade costs 70% of original build cost
+
+// Colour for enemy types
+export const COLOUR_SCOUT = 0x44ff88;     // green-ish
+export const COLOUR_TANK = 0xaa44ff;      // purple
+export const COLOUR_SWARM = 0xffdd00;     // yellow
+
 // Mineral pickup constants
 export const MINERAL_PICKUP_TRACTOR_RANGE = 120;  // px — nodes pull pickups within this range
 export const MINERAL_PICKUP_TRACTOR_SPEED = 0.15;  // world units per ms toward node

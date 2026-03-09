@@ -2,7 +2,7 @@ import { GameNode } from '../Node';
 import {
     CAPACITOR_HEALTH, CAPACITOR_RADIUS, CAPACITOR_POWER_CHARGE,
     CAPACITOR_MAX_STORAGE, CAPACITOR_DISCHARGE_RATE,
-    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_SELECTION, COLOUR_PURPLE,
+    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_SELECTION, COLOUR_PURPLE, COLOUR_GREEN,
     PowerPriority
 } from '../../utils/Constants';
 
@@ -42,6 +42,13 @@ export class Capacitor extends GameNode {
 
     getStorageRatio(): number {
         return this.currentStorage / this.maxStorage;
+    }
+
+    upgrade(): boolean {
+        if (!super.upgrade()) return false;
+        this.maxStorage = Math.round(CAPACITOR_MAX_STORAGE * 1.5);
+        this.chargeRate = Math.round(CAPACITOR_POWER_CHARGE * 1.3);
+        return true;
     }
 
     protected drawNode(): void {
@@ -84,6 +91,23 @@ export class Capacitor extends GameNode {
                 this.graphics.fillStyle(fillColour, alpha * 0.8);
                 this.graphics.fillRect(-barW / 2 + 1, barH / 2 - fillH, barW - 2, fillH);
             }
+        }
+
+        // Upgrade chevron
+        if (this.upgraded) {
+            this.graphics.lineStyle(1, COLOUR_PURPLE, alpha * 0.8);
+            this.graphics.beginPath();
+            this.graphics.moveTo(-3, -this.nodeRadius - 3);
+            this.graphics.lineTo(0, -this.nodeRadius - 6);
+            this.graphics.lineTo(3, -this.nodeRadius - 3);
+            this.graphics.strokePath();
+        }
+
+        // Repair indicator
+        if (this.isRepairing) {
+            this.graphics.fillStyle(COLOUR_GREEN, 0.9);
+            this.graphics.fillRect(-1, -this.nodeRadius - 4, 2, 5);
+            this.graphics.fillRect(-2.5, -this.nodeRadius - 2.5, 5, 2);
         }
 
         // Construction progress bar
