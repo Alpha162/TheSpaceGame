@@ -5,171 +5,129 @@ import {
 } from '../utils/Constants';
 
 export class SpawnPanel {
-    private scene: Phaser.Scene;
     private combatSystem: CombatSystem;
     private allObjects: Phaser.GameObjects.GameObject[] = [];
     private countText: Phaser.GameObjects.Text;
     private enemyCountText: Phaser.GameObjects.Text;
     private spawnCount = 5;
 
-    private bg: Phaser.GameObjects.Graphics;
-    private title: Phaser.GameObjects.Text;
-    private minusZone: Phaser.GameObjects.Zone;
-    private minusGfx: Phaser.GameObjects.Graphics;
-    private minusText: Phaser.GameObjects.Text;
-    private plusZone: Phaser.GameObjects.Zone;
-    private plusGfx: Phaser.GameObjects.Graphics;
-    private plusText: Phaser.GameObjects.Text;
-    private spawnZone: Phaser.GameObjects.Zone;
-    private spawnGfx: Phaser.GameObjects.Graphics;
-    private spawnText: Phaser.GameObjects.Text;
-    private readonly handleResize: (size: Phaser.Structs.Size) => void;
-
     constructor(scene: Phaser.Scene, combatSystem: CombatSystem) {
-        this.scene = scene;
         this.combatSystem = combatSystem;
 
+        const s = UI_SCALE;
+        const panelX = scene.scale.width - 174 * s;
+        const panelY = scene.scale.height - 70 * s;
+        const panelW = 170 * s;
+        const panelH = 64 * s;
+
         // Background panel
-        this.bg = scene.add.graphics();
-        this.bg.setScrollFactor(0);
-        this.bg.setDepth(200);
-        this.allObjects.push(this.bg);
+        const bg = scene.add.graphics();
+        bg.setScrollFactor(0);
+        bg.setDepth(200);
+        bg.fillStyle(COLOUR_PANEL, 0.85);
+        bg.fillRoundedRect(panelX, panelY, panelW, panelH, 4 * s);
+        bg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 4 * s);
+        this.allObjects.push(bg);
 
         // Title
-        const s = UI_SCALE;
-        this.title = scene.add.text(0, 0, 'ENEMIES', {
+        const title = scene.add.text(panelX + panelW / 2, panelY + 8 * s, 'ENEMIES', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(9 * s)}px`,
             color: '#ff3d00'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
-        this.allObjects.push(this.title);
+        this.allObjects.push(title);
 
         // Minus button
-        this.minusZone = scene.add.zone(0, 0, 0, 0)
+        const minusBtnX = panelX + 8 * s;
+        const btnY = panelY + 22 * s;
+        const btnSize = 20 * s;
+
+        const minusZone = scene.add.zone(minusBtnX + btnSize / 2, btnY + btnSize / 2, btnSize, btnSize)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
-        this.allObjects.push(this.minusZone);
+        this.allObjects.push(minusZone);
 
-        this.minusGfx = scene.add.graphics();
-        this.minusGfx.setScrollFactor(0).setDepth(201);
-        this.allObjects.push(this.minusGfx);
+        const minusGfx = scene.add.graphics();
+        minusGfx.setScrollFactor(0).setDepth(201);
+        minusGfx.fillStyle(COLOUR_PANEL_BORDER, 0.6);
+        minusGfx.fillRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2 * s);
+        minusGfx.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.8);
+        minusGfx.strokeRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2 * s);
+        this.allObjects.push(minusGfx);
 
-        this.minusText = scene.add.text(0, 0, '-', {
+        const minusText = scene.add.text(minusBtnX + btnSize / 2, btnY + btnSize / 2, '-', {
             fontFamily: 'monospace', fontSize: `${Math.round(14 * s)}px`, color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
-        this.allObjects.push(this.minusText);
+        this.allObjects.push(minusText);
 
-        this.minusZone.on('pointerdown', () => {
+        minusZone.on('pointerdown', () => {
             this.spawnCount = Math.max(1, this.spawnCount - 1);
             this.updateCountDisplay();
         });
 
         // Count display
-        this.countText = scene.add.text(0, 0, `${this.spawnCount}`, {
+        this.countText = scene.add.text(panelX + panelW / 2 - 16 * s, btnY + btnSize / 2, `${this.spawnCount}`, {
             fontFamily: 'monospace', fontSize: `${Math.round(14 * s)}px`, color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(this.countText);
 
         // Plus button
-        this.plusZone = scene.add.zone(0, 0, 0, 0)
+        const plusBtnX = panelX + panelW / 2 - 16 * s + 18 * s;
+
+        const plusZone = scene.add.zone(plusBtnX + btnSize / 2, btnY + btnSize / 2, btnSize, btnSize)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
-        this.allObjects.push(this.plusZone);
+        this.allObjects.push(plusZone);
 
-        this.plusGfx = scene.add.graphics();
-        this.plusGfx.setScrollFactor(0).setDepth(201);
-        this.allObjects.push(this.plusGfx);
+        const plusGfx = scene.add.graphics();
+        plusGfx.setScrollFactor(0).setDepth(201);
+        plusGfx.fillStyle(COLOUR_PANEL_BORDER, 0.6);
+        plusGfx.fillRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2 * s);
+        plusGfx.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.8);
+        plusGfx.strokeRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2 * s);
+        this.allObjects.push(plusGfx);
 
-        this.plusText = scene.add.text(0, 0, '+', {
+        const plusText = scene.add.text(plusBtnX + btnSize / 2, btnY + btnSize / 2, '+', {
             fontFamily: 'monospace', fontSize: `${Math.round(14 * s)}px`, color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
-        this.allObjects.push(this.plusText);
+        this.allObjects.push(plusText);
 
-        this.plusZone.on('pointerdown', () => {
+        plusZone.on('pointerdown', () => {
             this.spawnCount = Math.min(50, this.spawnCount + 1);
             this.updateCountDisplay();
         });
 
         // Spawn button
-        this.spawnGfx = scene.add.graphics();
-        this.spawnGfx.setScrollFactor(0).setDepth(201);
-        this.allObjects.push(this.spawnGfx);
+        const spawnBtnX = plusBtnX + btnSize + 8 * s;
+        const spawnBtnW = panelX + panelW - spawnBtnX - 8 * s;
 
-        this.spawnText = scene.add.text(0, 0, 'SPAWN', {
+        const spawnGfx = scene.add.graphics();
+        spawnGfx.setScrollFactor(0).setDepth(201);
+        spawnGfx.fillStyle(COLOUR_RED, 0.3);
+        spawnGfx.fillRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2 * s);
+        spawnGfx.lineStyle(1 * s, COLOUR_RED, 0.6);
+        spawnGfx.strokeRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2 * s);
+        this.allObjects.push(spawnGfx);
+
+        const spawnText = scene.add.text(spawnBtnX + spawnBtnW / 2, btnY + btnSize / 2, 'SPAWN', {
             fontFamily: 'monospace', fontSize: `${Math.round(10 * s)}px`, color: '#ff3d00'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
-        this.allObjects.push(this.spawnText);
+        this.allObjects.push(spawnText);
 
-        this.spawnZone = scene.add.zone(0, 0, 0, 0)
+        const spawnZone = scene.add.zone(spawnBtnX + spawnBtnW / 2, btnY + btnSize / 2, spawnBtnW, btnSize)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
-        this.allObjects.push(this.spawnZone);
+        this.allObjects.push(spawnZone);
 
-        this.spawnZone.on('pointerdown', () => {
+        spawnZone.on('pointerdown', () => {
             this.combatSystem.spawnWave(this.spawnCount);
         });
-        this.spawnZone.on('pointerover', () => this.spawnText.setColor('#ffffff'));
-        this.spawnZone.on('pointerout', () => this.spawnText.setColor('#ff3d00'));
+        spawnZone.on('pointerover', () => spawnText.setColor('#ffffff'));
+        spawnZone.on('pointerout', () => spawnText.setColor('#ff3d00'));
 
         // Active enemy count display
-        this.enemyCountText = scene.add.text(0, 0, 'Active: 0', {
+        this.enemyCountText = scene.add.text(panelX + panelW / 2, panelY + panelH - 12 * s, 'Active: 0', {
             fontFamily: 'monospace', fontSize: `${Math.round(9 * s)}px`, color: '#888888'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
         this.allObjects.push(this.enemyCountText);
-
-        this.relayout(scene.scale.width, scene.scale.height);
-
-        this.handleResize = (size: Phaser.Structs.Size) => {
-            this.relayout(size.width, size.height);
-        };
-        this.scene.scale.on('resize', this.handleResize, this);
-    }
-
-    relayout(width: number, height: number): void {
-        const s = UI_SCALE;
-        const panelX = width - 174 * s;
-        const panelY = height - 70 * s;
-        const panelW = 170 * s;
-        const panelH = 64 * s;
-        const btnY = panelY + 22 * s;
-        const btnSize = 20 * s;
-
-        this.bg.clear();
-        this.bg.fillStyle(COLOUR_PANEL, 0.85);
-        this.bg.fillRoundedRect(panelX, panelY, panelW, panelH, 4 * s);
-        this.bg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
-        this.bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 4 * s);
-
-        this.title.setPosition(panelX + panelW / 2, panelY + 8 * s);
-
-        const minusBtnX = panelX + 8 * s;
-        this.minusZone.setPosition(minusBtnX + btnSize / 2, btnY + btnSize / 2).setSize(btnSize, btnSize);
-        this.minusGfx.clear();
-        this.minusGfx.fillStyle(COLOUR_PANEL_BORDER, 0.6);
-        this.minusGfx.fillRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2 * s);
-        this.minusGfx.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.8);
-        this.minusGfx.strokeRoundedRect(minusBtnX, btnY, btnSize, btnSize, 2 * s);
-        this.minusText.setPosition(minusBtnX + btnSize / 2, btnY + btnSize / 2);
-
-        this.countText.setPosition(panelX + panelW / 2 - 16 * s, btnY + btnSize / 2);
-
-        const plusBtnX = panelX + panelW / 2 - 16 * s + 18 * s;
-        this.plusZone.setPosition(plusBtnX + btnSize / 2, btnY + btnSize / 2).setSize(btnSize, btnSize);
-        this.plusGfx.clear();
-        this.plusGfx.fillStyle(COLOUR_PANEL_BORDER, 0.6);
-        this.plusGfx.fillRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2 * s);
-        this.plusGfx.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.8);
-        this.plusGfx.strokeRoundedRect(plusBtnX, btnY, btnSize, btnSize, 2 * s);
-        this.plusText.setPosition(plusBtnX + btnSize / 2, btnY + btnSize / 2);
-
-        const spawnBtnX = plusBtnX + btnSize + 8 * s;
-        const spawnBtnW = panelX + panelW - spawnBtnX - 8 * s;
-        this.spawnZone.setPosition(spawnBtnX + spawnBtnW / 2, btnY + btnSize / 2).setSize(spawnBtnW, btnSize);
-        this.spawnGfx.clear();
-        this.spawnGfx.fillStyle(COLOUR_RED, 0.3);
-        this.spawnGfx.fillRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2 * s);
-        this.spawnGfx.lineStyle(1 * s, COLOUR_RED, 0.6);
-        this.spawnGfx.strokeRoundedRect(spawnBtnX, btnY, spawnBtnW, btnSize, 2 * s);
-        this.spawnText.setPosition(spawnBtnX + spawnBtnW / 2, btnY + btnSize / 2);
-
-        this.enemyCountText.setPosition(panelX + panelW / 2, panelY + panelH - 12 * s);
     }
 
     private updateCountDisplay(): void {
@@ -178,10 +136,6 @@ export class SpawnPanel {
 
     update(): void {
         this.enemyCountText.setText(`Active: ${this.combatSystem.getEnemyCount()}`);
-    }
-
-    destroy(): void {
-        this.scene.scale.off('resize', this.handleResize, this);
     }
 
     getGameObjects(): Phaser.GameObjects.GameObject[] {

@@ -6,7 +6,6 @@ interface MenuButton {
     bg: Phaser.GameObjects.Graphics;
     text: Phaser.GameObjects.Text;
     costText: Phaser.GameObjects.Text;
-    zone: Phaser.GameObjects.Zone;
     type: BuildableType;
     x: number;
     y: number;
@@ -23,8 +22,6 @@ export class BuildMenu {
     private buttons: MenuButton[] = [];
     private bgGraphics: Phaser.GameObjects.Graphics;
     private allObjects: Phaser.GameObjects.GameObject[] = [];
-    private readonly handleResize: (size: Phaser.Structs.Size) => void;
-    private readonly keyboardBindings: Array<{ event: string; handler: () => void }> = [];
 
     constructor(scene: Phaser.Scene, buildSystem: BuildSystem) {
         this.scene = scene;
@@ -34,77 +31,45 @@ export class BuildMenu {
         this.bgGraphics = scene.add.graphics();
         this.bgGraphics.setScrollFactor(0);
         this.bgGraphics.setDepth(200);
+
+        const s = UI_SCALE;
+        const panelY = scene.scale.height - 70 * s;
+        const btnW = 84 * s;
+        const gap = 6 * s;
+        const panelW = BUILD_ORDER.length * (btnW + gap) + gap;
+        this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
+        this.bgGraphics.fillRoundedRect(4 * s, panelY, panelW, 64 * s, 4 * s);
+        this.bgGraphics.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        this.bgGraphics.strokeRoundedRect(4 * s, panelY, panelW, 64 * s, 4 * s);
         this.allObjects.push(this.bgGraphics);
 
         // Build buttons
+        const btnH = 52 * s;
+        let bx = 12 * s;
         for (const type of BUILD_ORDER) {
-            this.createButton(type);
+            this.createButton(type, bx, panelY + 6 * s, btnW, btnH);
+            bx += btnW + gap;
         }
-
-        this.relayout(scene.scale.width, scene.scale.height);
-
-        this.handleResize = (size: Phaser.Structs.Size) => {
-            this.relayout(size.width, size.height);
-        };
-        this.scene.scale.on('resize', this.handleResize, this);
 
         // Keyboard shortcuts 1-7
         if (scene.input.keyboard) {
             for (let i = 0; i < BUILD_ORDER.length; i++) {
                 const type = BUILD_ORDER[i];
-                const event = `keydown-${KEY_NAMES[i]}`;
-                const handler = () => {
+                scene.input.keyboard.on(`keydown-${KEY_NAMES[i]}`, () => {
                     this.buildSystem.startBuild(type);
                     this.updateButtonStates();
-                };
-                this.keyboardBindings.push({ event, handler });
-                scene.input.keyboard.on(event, handler);
+                });
             }
-
-            const refreshEvents = ['keydown-Q', 'keydown-ESC'];
-            for (const event of refreshEvents) {
-                const handler = () => {
-                    this.updateButtonStates();
-                };
-                this.keyboardBindings.push({ event, handler });
-                scene.input.keyboard.on(event, handler);
-            }
+            scene.input.keyboard.on('keydown-Q', () => {
+                this.updateButtonStates();
+            });
+            scene.input.keyboard.on('keydown-ESC', () => {
+                this.updateButtonStates();
+            });
         }
     }
 
-    relayout(_width: number, height: number): void {
-        const s = UI_SCALE;
-        const panelY = height - 70 * s;
-        const btnW = 84 * s;
-        const gap = 6 * s;
-        const panelW = BUILD_ORDER.length * (btnW + gap) + gap;
-        const btnH = 52 * s;
-
-        this.bgGraphics.clear();
-        this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
-        this.bgGraphics.fillRoundedRect(4 * s, panelY, panelW, 64 * s, 4 * s);
-        this.bgGraphics.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
-        this.bgGraphics.strokeRoundedRect(4 * s, panelY, panelW, 64 * s, 4 * s);
-
-        let bx = 12 * s;
-        for (const button of this.buttons) {
-            button.x = bx;
-            button.y = panelY + 6 * s;
-            button.width = btnW;
-            button.height = btnH;
-
-            button.text.setPosition(button.x + button.width / 2, button.y + 14 * s);
-            button.costText.setPosition(button.x + button.width / 2, button.y + 32 * s);
-            button.zone.setPosition(button.x + button.width / 2, button.y + button.height / 2);
-            button.zone.setSize(button.width, button.height);
-
-            bx += btnW + gap;
-        }
-
-        this.updateButtonStates();
-    }
-
-    private createButton(type: BuildableType): void {
+    private createButton(type: BuildableType, x: number, y: number, width: number, height: number): void {
         const config = BUILDABLE_CONFIGS[type];
 
         const bg = this.scene.add.graphics();
@@ -112,26 +77,27 @@ export class BuildMenu {
         bg.setDepth(201);
 
         const s = UI_SCALE;
-        const text = this.scene.add.text(0, 0, config.label, {
+        const text = this.scene.add.text(x + width / 2, y + 14 * s, config.label, {
             fontFamily: 'monospace',
             fontSize: `${Math.round(11 * s)}px`,
             color: '#ffffff'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
 
-        const costText = this.scene.add.text(0, 0, `${config.cost}m / ${config.powerConsumption}pw`, {
+        const costText = this.scene.add.text(x + width / 2, y + 32 * s, `${config.cost}m / ${config.powerConsumption}pw`, {
             fontFamily: 'monospace',
             fontSize: `${Math.round(9 * s)}px`,
             color: '#888888'
         }).setScrollFactor(0).setDepth(202).setOrigin(0.5);
 
-        const zone = this.scene.add.zone(0, 0, 0, 0)
+        const button: MenuButton = { bg, text, costText, type, x, y, width, height };
+        this.buttons.push(button);
+        this.allObjects.push(bg, text, costText);
+
+        const zone = this.scene.add.zone(x + width / 2, y + height / 2, width, height)
             .setScrollFactor(0)
             .setDepth(203)
             .setInteractive({ useHandCursor: true });
-
-        const button: MenuButton = { bg, text, costText, zone, type, x: 0, y: 0, width: 0, height: 0 };
-        this.buttons.push(button);
-        this.allObjects.push(bg, text, costText, zone);
+        this.allObjects.push(zone);
 
         zone.on('pointerdown', () => {
             this.buildSystem.startBuild(type);
@@ -167,15 +133,6 @@ export class BuildMenu {
             const isActive = button.type === activeType;
             this.drawButton(button, isActive);
             button.text.setColor(isActive ? '#00e5ff' : '#ffffff');
-        }
-    }
-
-    destroy(): void {
-        this.scene.scale.off('resize', this.handleResize, this);
-        if (this.scene.input.keyboard) {
-            for (const binding of this.keyboardBindings) {
-                this.scene.input.keyboard.off(binding.event, binding.handler);
-            }
         }
     }
 

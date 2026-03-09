@@ -8,7 +8,6 @@ import {
 } from '../utils/Constants';
 
 export class HUD {
-    private scene: Phaser.Scene;
     private resourceManager: ResourceManager;
     private powerNetwork: PowerNetwork;
     private mineralText: Phaser.GameObjects.Text;
@@ -18,37 +17,39 @@ export class HUD {
     private powerBar: Phaser.GameObjects.Graphics;
     private capacitorBar: Phaser.GameObjects.Graphics;
     private bgGraphics: Phaser.GameObjects.Graphics;
-    private powerBarLayout = { x: 0, y: 0, width: 0, height: 0 };
-    private capacitorBarLayout = { x: 0, y: 0, width: 0, height: 0 };
-    private readonly handleResize: (size: Phaser.Structs.Size) => void;
 
     private allObjects: Phaser.GameObjects.GameObject[] = [];
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
-        this.scene = scene;
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
+
+        const s = UI_SCALE;
+        const viewW = scene.scale.width;
 
         // Background panel (taller to fit two rows)
         this.bgGraphics = scene.add.graphics();
         this.bgGraphics.setScrollFactor(0);
         this.bgGraphics.setDepth(200);
+        this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
+        this.bgGraphics.fillRoundedRect(4 * s, 4 * s, viewW - 8 * s, 52 * s, 4 * s);
+        this.bgGraphics.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        this.bgGraphics.strokeRoundedRect(4 * s, 4 * s, viewW - 8 * s, 52 * s, 4 * s);
 
         // Row 1: Minerals + Power generation/demand
-        const s = UI_SCALE;
-        this.mineralText = scene.add.text(0, 0, '', {
+        this.mineralText = scene.add.text(16 * s, 10 * s, '', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(14 * s)}px`,
             color: '#ffab00'
         }).setScrollFactor(0).setDepth(201);
 
-        this.powerGenText = scene.add.text(0, 0, '', {
+        this.powerGenText = scene.add.text(160 * s, 10 * s, '', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(14 * s)}px`,
             color: '#00e5ff'
         }).setScrollFactor(0).setDepth(201);
 
-        this.powerDemandText = scene.add.text(0, 0, '', {
+        this.powerDemandText = scene.add.text(310 * s, 10 * s, '', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(14 * s)}px`,
             color: '#00e5ff'
@@ -60,7 +61,7 @@ export class HUD {
         this.powerBar.setDepth(201);
 
         // Row 2: Capacitor storage
-        this.capacitorText = scene.add.text(0, 0, '', {
+        this.capacitorText = scene.add.text(16 * s, 33 * s, '', {
             fontFamily: 'monospace',
             fontSize: `${Math.round(12 * s)}px`,
             color: '#aa44ff'
@@ -75,31 +76,6 @@ export class HUD {
             this.powerDemandText, this.powerBar,
             this.capacitorText, this.capacitorBar
         ];
-
-        this.relayout(scene.scale.width, scene.scale.height);
-
-        this.handleResize = (size: Phaser.Structs.Size) => {
-            this.relayout(size.width, size.height);
-        };
-        this.scene.scale.on('resize', this.handleResize, this);
-    }
-
-    relayout(width: number, _height: number): void {
-        const s = UI_SCALE;
-
-        this.bgGraphics.clear();
-        this.bgGraphics.fillStyle(COLOUR_PANEL, 0.85);
-        this.bgGraphics.fillRoundedRect(4 * s, 4 * s, width - 8 * s, 52 * s, 4 * s);
-        this.bgGraphics.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
-        this.bgGraphics.strokeRoundedRect(4 * s, 4 * s, width - 8 * s, 52 * s, 4 * s);
-
-        this.mineralText.setPosition(16 * s, 10 * s);
-        this.powerGenText.setPosition(160 * s, 10 * s);
-        this.powerDemandText.setPosition(310 * s, 10 * s);
-        this.capacitorText.setPosition(16 * s, 33 * s);
-
-        this.powerBarLayout = { x: 470 * s, y: 11 * s, width: 150 * s, height: 14 * s };
-        this.capacitorBarLayout = { x: 160 * s, y: 35 * s, width: 120 * s, height: 10 * s };
     }
 
     getGameObjects(): Phaser.GameObjects.GameObject[] {
@@ -133,7 +109,11 @@ export class HUD {
 
         // Power bar
         this.powerBar.clear();
-        const { x: barX, y: barY, width: barW, height: barH } = this.powerBarLayout;
+        const s = UI_SCALE;
+        const barX = 470 * s;
+        const barY = 11 * s;
+        const barW = 150 * s;
+        const barH = 14 * s;
 
         // Background
         this.powerBar.fillStyle(0x222222, 0.8);
@@ -176,7 +156,10 @@ export class HUD {
             this.capacitorText.setText(`Cap: ${capStored}/${capMax}`);
             this.capacitorText.setVisible(true);
 
-            const { x: capBarX, y: capBarY, width: capBarW, height: capBarH } = this.capacitorBarLayout;
+            const capBarX = 160 * s;
+            const capBarY = 35 * s;
+            const capBarW = 120 * s;
+            const capBarH = 10 * s;
 
             // Background
             this.capacitorBar.fillStyle(0x222222, 0.8);
@@ -195,9 +178,5 @@ export class HUD {
             this.capacitorText.setText('');
             this.capacitorText.setVisible(false);
         }
-    }
-
-    destroy(): void {
-        this.scene.scale.off('resize', this.handleResize, this);
     }
 }
