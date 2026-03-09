@@ -173,17 +173,18 @@ export class Enemy {
             const dy = this.y - other.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            // Separation — push away from very close drones
-            if (dist < 20 && dist > 0.1) {
-                sepX += (dx / dist) * (20 - dist) / 20;
-                sepY += (dy / dist) * (20 - dist) / 20;
+            // Separation — push away from nearby drones (soft, wider radius)
+            if (dist < 30 && dist > 0.1) {
+                const strength = (30 - dist) / 30;
+                sepX += (dx / dist) * strength;
+                sepY += (dy / dist) * strength;
             }
 
             // Cohesion + alignment with nearby drones
-            if (dist < 100) {
+            if (dist < 120) {
                 cohX += other.x;
                 cohY += other.y;
-                // Alignment: match neighbors' velocity direction
+                // Alignment: match neighbors' heading
                 const otx = other.targetX - other.x;
                 const oty = other.targetY - other.y;
                 const otd = Math.sqrt(otx * otx + oty * oty);
@@ -201,9 +202,13 @@ export class Enemy {
             cohY = (cohY / cohCount - this.y);
             const cd = Math.sqrt(cohX * cohX + cohY * cohY);
             if (cd > 0.1) { cohX /= cd; cohY /= cd; }
+
+            // Alignment: normalize accumulated heading
+            const ad = Math.sqrt(alignVx * alignVx + alignVy * alignVy);
+            if (ad > 0.1) { alignVx /= ad; alignVy /= ad; }
         }
 
-        // Projectile avoidance — open around incoming projectiles
+        // Projectile avoidance — dodge incoming friendly projectiles
         let avoidX = 0, avoidY = 0;
         for (const p of projectiles) {
             const dx = this.x - p.x;
@@ -220,8 +225,8 @@ export class Enemy {
             avoidY += (dy / dist) * strength;
         }
 
-        this.flockFx = sepX * 0.6 + cohX * 0.15 + alignVx * 0.05 + avoidX * 0.8;
-        this.flockFy = sepY * 0.6 + cohY * 0.15 + alignVy * 0.05 + avoidY * 0.8;
+        this.flockFx = sepX * 0.5 + cohX * 0.4 + alignVx * 0.25 + avoidX * 0.8;
+        this.flockFy = sepY * 0.5 + cohY * 0.4 + alignVy * 0.25 + avoidY * 0.8;
     }
 
     update(delta: number): void {
