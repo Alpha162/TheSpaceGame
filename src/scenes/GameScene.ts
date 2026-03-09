@@ -10,8 +10,10 @@ import { CommandHub } from '../entities/CommandHub';
 import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
 import { BuildSystem } from '../systems/BuildSystem';
+import { CombatSystem } from '../systems/CombatSystem';
 import { HUD } from '../ui/HUD';
 import { BuildMenu } from '../ui/BuildMenu';
+import { SpawnPanel } from '../ui/SpawnPanel';
 
 export class GameScene extends Phaser.Scene {
     wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
@@ -19,8 +21,10 @@ export class GameScene extends Phaser.Scene {
     resourceManager!: ResourceManager;
     powerNetwork!: PowerNetwork;
     buildSystem!: BuildSystem;
+    combatSystem!: CombatSystem;
     hud!: HUD;
     buildMenu!: BuildMenu;
+    spawnPanel!: SpawnPanel;
     starLayers: Phaser.GameObjects.Graphics[] = [];
     private uiObjects: Set<Phaser.GameObjects.GameObject> = new Set();
 
@@ -46,9 +50,13 @@ export class GameScene extends Phaser.Scene {
         // Build system
         this.buildSystem = new BuildSystem(this, this.resourceManager, this.powerNetwork);
 
+        // Combat system
+        this.combatSystem = new CombatSystem(this, this.resourceManager, this.powerNetwork, this.buildSystem);
+
         // UI (fixed to camera)
         this.hud = new HUD(this, this.resourceManager, this.powerNetwork);
         this.buildMenu = new BuildMenu(this, this.buildSystem);
+        this.spawnPanel = new SpawnPanel(this, this.combatSystem);
 
         // Camera setup
         this.cameras.main.centerOn(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
@@ -56,7 +64,8 @@ export class GameScene extends Phaser.Scene {
         // UI camera – separate from main so zoom doesn't affect HUD
         const uiObjectsList = [
             ...this.hud.getGameObjects(),
-            ...this.buildMenu.getGameObjects()
+            ...this.buildMenu.getGameObjects(),
+            ...this.spawnPanel.getGameObjects()
         ];
         this.uiObjects = new Set(uiObjectsList);
         this.cameras.main.ignore(uiObjectsList);
@@ -99,8 +108,10 @@ export class GameScene extends Phaser.Scene {
     update(_time: number, delta: number): void {
         this.handleCameraMovement();
         this.buildSystem.update();
+        this.combatSystem.update(delta);
         this.powerNetwork.update(delta);
         this.hud.update();
+        this.spawnPanel.update();
     }
 
     private createStarfield(): void {

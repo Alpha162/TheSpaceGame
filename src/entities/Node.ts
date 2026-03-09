@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import {
     NODE_RADIUS, COLOUR_CYAN, COLOUR_GREY, COLOUR_DARK_METAL, COLOUR_AMBER,
-    COLOUR_SELECTION, CONSTRUCTION_TIME_MS, PowerPriority
+    COLOUR_SELECTION, COLOUR_GREEN, CONSTRUCTION_TIME_MS, PowerPriority,
+    NODE_REPAIR_DELAY_MS, NODE_REPAIR_RATE, NODE_REPAIR_POWER_COST
 } from '../utils/Constants';
 
 export type NodeState = 'online' | 'offline' | 'brownout' | 'constructing';
@@ -19,6 +20,10 @@ export class GameNode extends Phaser.GameObjects.Container {
     private lastConstructionTime = 0;
     constructionPowered = true; // whether this node has a valid powered path for construction
     protected graphics: Phaser.GameObjects.Graphics;
+
+    // Repair state
+    private lastDamageTime = 0;
+    private _isRepairing = false;
 
     constructor(
         scene: Phaser.Scene,
@@ -94,16 +99,54 @@ export class GameNode extends Phaser.GameObjects.Container {
 
     /** Returns the current power draw for this tick. Override for dynamic consumption. */
     getCurrentPowerDraw(): number {
-        return this.powerConsumption;
+        let draw = this.powerConsumption;
+        if (this._isRepairing) {
+            draw += NODE_REPAIR_POWER_COST;
+        }
+        return draw;
+    }
+
+    /** Whether this node is currently self-repairing */
+    get isRepairing(): boolean {
+        return this._isRepairing;
     }
 
     /** Called each power tick when node is online. Override for per-tick behaviour. */
     onPowerTick(_delta: number): void {
-        // Base class does nothing
+        // Base class: handle repair
+        this.updateRepair(_delta);
+    }
+
+    /** Update repair state. Called during power tick when online. */
+    protected updateRepair(delta: number): void {
+        if (this.currentHealth >= this.maxHealth) {
+            this._isRepairing = false;
+            return;
+        }
+
+        const now = this.scene.time.now;
+        const timeSinceDamage = now - this.lastDamageTime;
+
+        if (timeSinceDamage >= NODE_REPAIR_DELAY_MS && this.nodeState === 'online') {
+            this._isRepairing = true;
+            this.currentHealth = Math.min(
+                this.maxHealth,
+                this.currentHealth + NODE_REPAIR_RATE * delta
+            );
+            if (this.currentHealth >= this.maxHealth) {
+                this.currentHealth = this.maxHealth;
+                this._isRepairing = false;
+            }
+            this.drawNode();
+        } else {
+            this._isRepairing = false;
+        }
     }
 
     takeDamage(amount: number): boolean {
         this.currentHealth = Math.max(0, this.currentHealth - amount);
+        this.lastDamageTime = this.scene.time.now;
+        this._isRepairing = false;
         this.drawNode();
         return this.currentHealth <= 0;
     }
@@ -131,6 +174,13 @@ export class GameNode extends Phaser.GameObjects.Container {
         // Center dot
         this.graphics.fillStyle(colour, alpha);
         this.graphics.fillCircle(0, 0, 3);
+
+        // Repair indicator (small green + near node)
+        if (this._isRepairing) {
+            this.graphics.fillStyle(COLOUR_GREEN, 0.9);
+            this.graphics.fillRect(-1, -this.nodeRadius - 4, 2, 5);
+            this.graphics.fillRect(-2.5, -this.nodeRadius - 2.5, 5, 2);
+        }
 
         // Construction progress bar
         if (this.isConstructing) {

@@ -114,6 +114,9 @@ export class BuildSystem {
         // Build menu bottom-left panel
         if (x >= 4 && x <= 284 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
 
+        // Spawn panel bottom-right
+        if (x >= VIEWPORT_WIDTH - 174 && x <= VIEWPORT_WIDTH - 4 && y >= VIEWPORT_HEIGHT - 70 && y <= VIEWPORT_HEIGHT - 6) return true;
+
         return false;
     }
 

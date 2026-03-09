@@ -117,3 +117,17 @@ export const COLOUR_SELECTION = 0xffd700;
 
 // Power flow
 export const POWER_PULSE_SPEED = 0.003;
+
+// Enemy constants
+export const ENEMY_RADIUS = 6;
+export const ENEMY_HEALTH = 30;
+export const ENEMY_SPEED = 0.04;          // world units per ms
+export const ENEMY_DAMAGE = 5;            // damage per hit
+export const ENEMY_ATTACK_COOLDOWN = 1500; // ms between attacks
+export const ENEMY_ATTACK_RANGE = 25;     // range at which enemy attacks
+export const ENEMY_MINERAL_REWARD = 10;   // minerals dropped on death
+
+// Node repair constants
+export const NODE_REPAIR_DELAY_MS = 3000;    // ms after last damage before repair starts
+export const NODE_REPAIR_RATE = 0.02;        // health per ms (= 20 HP/sec)
+export const NODE_REPAIR_POWER_COST = 3;     // extra power per tick while repairing
