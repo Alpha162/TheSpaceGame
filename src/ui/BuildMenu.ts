@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BuildSystem, BUILDABLE_CONFIGS, BuildableType } from '../systems/BuildSystem';
 import { COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_CYAN, UI_SCALE } from '../utils/Constants';
+import { SoundManager } from '../systems/SoundManager';
 
 interface MenuButton {
     bg: Phaser.GameObjects.Graphics;
@@ -100,12 +101,14 @@ export class BuildMenu {
         this.allObjects.push(zone);
 
         zone.on('pointerdown', () => {
+            SoundManager.play('uiClick');
             this.buildSystem.startBuild(type);
             this.updateButtonStates();
         });
 
         zone.on('pointerover', () => {
             text.setColor('#00e5ff');
+            SoundManager.play('uiHover');
         });
 
         zone.on('pointerout', () => {

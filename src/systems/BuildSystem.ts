@@ -30,6 +30,7 @@ import {
 } from '../utils/Constants';
 import { CommandHub } from '../entities/CommandHub';
 import { distanceBetween } from '../utils/Helpers';
+import { SoundManager } from './SoundManager';
 
 export type BuildableType = 'relay' | 'shield' | 'capacitor' | 'blaster' | 'laser' | 'missile' | 'miner';
 
@@ -219,6 +220,7 @@ export class BuildSystem {
                 const justFinished = node.updateConstruction();
                 if (justFinished) {
                     this.powerNetwork.updateConnectivity();
+                    SoundManager.play('constructionComplete');
                 }
             }
         }
@@ -611,5 +613,6 @@ export class BuildSystem {
         node.startConstruction();
         this.powerNetwork.addNode(node);
         this.placedNodes.push(node);
+        SoundManager.play('build');
     }
 }

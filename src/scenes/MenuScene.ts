@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { COLOUR_WHITE, UI_SCALE } from '../utils/Constants';
+import { SoundManager } from '../systems/SoundManager';
 
 export class MenuScene extends Phaser.Scene {
     constructor() {
@@ -39,6 +40,7 @@ export class MenuScene extends Phaser.Scene {
 
         startButton.on('pointerover', () => {
             startButton.setColor('#00e5ff');
+            SoundManager.play('uiHover');
         });
 
         startButton.on('pointerout', () => {
@@ -46,6 +48,7 @@ export class MenuScene extends Phaser.Scene {
         });
 
         startButton.on('pointerdown', () => {
+            SoundManager.play('uiClick');
             this.scene.start('GameScene');
         });
 
