@@ -348,23 +348,59 @@ export class BuildSystem {
             }
         }
 
-        // Draw potential connections (only to valid targets per relay rules)
+        // Draw potential connections matching actual addNode() logic
         const allNodes = this.powerNetwork.getAllNodes();
         const isPlacingRelay = this.activeBuildType === 'relay';
+
+        // Collect in-range candidates sorted by distance (mirrors PowerNetwork.addNode)
+        const candidates: Array<{ node: GameNode; dist: number }> = [];
         for (const node of allNodes) {
             const dist = distanceBetween(wx, wy, node.x, node.y);
-            if (dist > MAX_POWER_LINK_LENGTH) continue;
-
-            // Check if this connection would be valid
-            let validLink = false;
-            if (isPlacingRelay) {
-                validLink = true; // relays connect to anything
-            } else if (this.powerNetwork.isAnchorNode(node)) {
-                const capacity = node instanceof CommandHub ? HUB_MAX_CONNECTIONS : RELAY_MAX_CONNECTIONS;
-                validLink = this.powerNetwork.getNonRelayConnectionCount(node) < capacity;
+            if (dist <= MAX_POWER_LINK_LENGTH) {
+                candidates.push({ node, dist });
             }
+        }
+        candidates.sort((a, b) => a.dist - b.dist);
 
-            if (validLink) {
+        const connectedSet = new Set<GameNode>();
+
+        if (isPlacingRelay) {
+            // Backbone: all anchors in range
+            for (const { node } of candidates) {
+                if (this.powerNetwork.isAnchorNode(node)) {
+                    connectedSet.add(node);
+                }
+            }
+            // Orphan non-anchors up to capacity
+            let slots = RELAY_MAX_CONNECTIONS;
+            for (const { node } of candidates) {
+                if (this.powerNetwork.isAnchorNode(node)) continue;
+                const neighbors = this.powerNetwork.getNeighbors(node);
+                let hasAnchor = false;
+                if (neighbors) {
+                    for (const n of neighbors) {
+                        if (this.powerNetwork.isAnchorNode(n)) { hasAnchor = true; break; }
+                    }
+                }
+                if (hasAnchor) continue;
+                if (slots <= 0) break;
+                connectedSet.add(node);
+                slots--;
+            }
+        } else {
+            // Non-anchor: nearest single anchor with capacity
+            for (const { node } of candidates) {
+                if (!this.powerNetwork.isAnchorNode(node)) continue;
+                const capacity = node instanceof CommandHub ? HUB_MAX_CONNECTIONS : RELAY_MAX_CONNECTIONS;
+                if (this.powerNetwork.getNonRelayConnectionCount(node) < capacity) {
+                    connectedSet.add(node);
+                    break;
+                }
+            }
+        }
+
+        for (const { node } of candidates) {
+            if (connectedSet.has(node)) {
                 const linkColour = this.isValidPlacement ? COLOUR_CYAN : COLOUR_RED;
                 this.rangeGraphics.lineStyle(1, linkColour, 0.3);
                 this.rangeGraphics.beginPath();
@@ -372,7 +408,7 @@ export class BuildSystem {
                 this.rangeGraphics.lineTo(node.x, node.y);
                 this.rangeGraphics.strokePath();
             } else if (this.powerNetwork.isAnchorNode(node)) {
-                // Show full relay connections in dim red
+                // Show full/skipped anchors in dim red
                 this.rangeGraphics.lineStyle(1, COLOUR_RED, 0.15);
                 this.rangeGraphics.beginPath();
                 this.rangeGraphics.moveTo(wx, wy);

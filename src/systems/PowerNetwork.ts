@@ -79,18 +79,51 @@ export class PowerNetwork {
         if (this.adjacency.has(node)) return [];
         this.adjacency.set(node, new Set());
 
-        // Auto-connect to nearby nodes that pass connection rules
         const newLinks: PowerLink[] = [];
+        const nodeIsAnchor = this.isAnchorNode(node);
+
+        // Collect in-range candidates sorted by distance (nearest first)
+        const candidates: Array<{ existing: GameNode; dist: number }> = [];
         for (const existing of this.adjacency.keys()) {
             if (existing === node) continue;
-            if (this.canLink(node, existing)) {
-                this.addLink(node, existing);
-                if (this.scene) {
-                    const link = new PowerLink(this.scene, node, existing);
-                    link.isBackbone = this.isAnchorNode(node) && this.isAnchorNode(existing);
-                    this.links.push(link);
-                    newLinks.push(link);
+            const dist = distanceBetween(node.x, node.y, existing.x, existing.y);
+            if (dist <= MAX_POWER_LINK_LENGTH) {
+                candidates.push({ existing, dist });
+            }
+        }
+        candidates.sort((a, b) => a.dist - b.dist);
+
+        const createLink = (other: GameNode) => {
+            this.addLink(node, other);
+            if (this.scene) {
+                const link = new PowerLink(this.scene, node, other);
+                link.isBackbone = nodeIsAnchor && this.isAnchorNode(other);
+                this.links.push(link);
+                newLinks.push(link);
+            }
+        };
+
+        if (nodeIsAnchor) {
+            // Backbone: connect to all other anchors in range
+            for (const { existing } of candidates) {
+                if (this.isAnchorNode(existing)) {
+                    createLink(existing);
                 }
+            }
+            // Pick up orphan non-anchors (no existing anchor connection), nearest first, up to capacity
+            for (const { existing } of candidates) {
+                if (this.isAnchorNode(existing)) continue;
+                if (this.hasAnchorConnection(existing)) continue;
+                if (this.getNonRelayConnectionCount(node) >= this.getAnchorCapacity(node)) break;
+                createLink(existing);
+            }
+        } else {
+            // Non-anchor: connect to nearest single anchor with available capacity
+            for (const { existing } of candidates) {
+                if (!this.isAnchorNode(existing)) continue;
+                if (this.getNonRelayConnectionCount(existing) >= this.getAnchorCapacity(existing)) continue;
+                createLink(existing);
+                break;
             }
         }
 
@@ -145,6 +178,16 @@ export class PowerNetwork {
         if (node instanceof CommandHub) return HUB_MAX_CONNECTIONS;
         if (node instanceof PowerRelay) return RELAY_MAX_CONNECTIONS;
         return 0;
+    }
+
+    /** Returns true if a non-anchor node already has at least one anchor connection. */
+    private hasAnchorConnection(node: GameNode): boolean {
+        const neighbors = this.adjacency.get(node);
+        if (!neighbors) return false;
+        for (const n of neighbors) {
+            if (this.isAnchorNode(n)) return true;
+        }
+        return false;
     }
 
     /** Check if two nodes can link: distance, type rules, and capacity. */
