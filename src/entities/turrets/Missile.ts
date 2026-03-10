@@ -8,6 +8,7 @@ import {
     PowerPriority, NODE_REPAIR_POWER_COST
 } from '../../utils/Constants';
 import { distanceBetween } from '../../utils/Helpers';
+import { SoundManager } from '../../systems/SoundManager';
 
 interface MissileProjectile {
     x: number;
@@ -101,6 +102,7 @@ export class Missile extends GameNode {
             if (this.fireCooldown <= 0) {
                 this.fireCooldown = 1000 / MISSILE_FIRE_RATE;
                 this.fireMissile(bestTarget);
+                SoundManager.play('missileLaunch');
             }
         }
 
@@ -161,6 +163,7 @@ export class Missile extends GameNode {
                         enemy.takeDamage(MISSILE_DAMAGE);
                     }
                 }
+                SoundManager.play('explosion');
 
                 // Spawn explosion
                 const expGfx = this.scene.add.graphics();

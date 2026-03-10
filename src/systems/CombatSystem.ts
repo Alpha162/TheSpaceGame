@@ -14,6 +14,7 @@ import {
     COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
+import { SoundManager } from './SoundManager';
 
 interface Projectile {
     x: number;
@@ -58,6 +59,7 @@ export class CombatSystem {
     spawnWave(count: number): void {
         const hub = this.powerNetwork.getHub();
         if (!hub) return;
+        SoundManager.play('waveSpawn');
 
         const types: EnemyType[] = ['drone', 'scout', 'tank', 'swarm'];
         const weights = [0.4, 0.25, 0.15, 0.2];
@@ -221,6 +223,7 @@ export class CombatSystem {
         for (let i = this.enemies.length - 1; i >= 0; i--) {
             const enemy = this.enemies[i];
             if (!enemy.alive) {
+                SoundManager.play('enemyDeath');
                 if (this.mineralManager) {
                     this.mineralManager.spawnPickup(enemy.x, enemy.y, enemy.reward);
                 } else {
@@ -387,6 +390,7 @@ export class CombatSystem {
                     const dist = distanceBetween(p.x, p.y, enemy.x, enemy.y);
                     if (dist <= enemy.radius + 3) {
                         enemy.takeDamage(p.damage);
+                        SoundManager.play('hit');
                         // Reward handled in enemy cleanup loop above
                         hit = true;
                         break;
@@ -400,6 +404,7 @@ export class CombatSystem {
                     const dist = distanceBetween(p.x, p.y, hub.x, hub.y);
                     if (dist <= hub.hubShieldRadius) {
                         hub.absorbShieldDamage(p.damage);
+                        SoundManager.play('shieldHit');
                         hit = true;
                     }
                 }
@@ -410,6 +415,7 @@ export class CombatSystem {
                         const dist = distanceBetween(p.x, p.y, shield.x, shield.y);
                         if (dist <= shield.bubbleRadius) {
                             shield.absorbDamage(p.damage);
+                            SoundManager.play('shieldHit');
                             hit = true;
                             break;
                         }
@@ -423,6 +429,7 @@ export class CombatSystem {
                         const dist = distanceBetween(p.x, p.y, node.x, node.y);
                         if (dist <= node.nodeRadius + 3) {
                             const died = node.takeDamage(p.damage);
+                            SoundManager.play('hit');
                             if (died) {
                                 this.handleNodeDeath(node);
                             }
@@ -464,10 +471,12 @@ export class CombatSystem {
 
     private handleNodeDeath(node: GameNode): void {
         if (node instanceof CommandHub) {
+            SoundManager.play('gameOver');
             this.scene.events.emit('hub-destroyed');
             return;
         }
 
+        SoundManager.play('nodeDestroyed');
         this.powerNetwork.removeNode(node);
         const placedNodes = this.buildSystem.getPlacedNodes();
         const idx = placedNodes.indexOf(node);

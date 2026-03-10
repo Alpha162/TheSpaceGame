@@ -8,6 +8,7 @@ import {
     MINERAL_PICKUP_TRANSIT_SPEED, COLOUR_AMBER
 } from '../utils/Constants';
 import { distanceBetween } from '../utils/Helpers';
+import { SoundManager } from './SoundManager';
 
 export class MineralManager {
     private pickups: MineralPickup[] = [];
@@ -217,5 +218,6 @@ export class MineralManager {
         this.resourceManager.earn(pickup.value);
         pickup.state = 'absorbed';
         pickup.alive = false;
+        SoundManager.play('mineralPickup');
     }
 }

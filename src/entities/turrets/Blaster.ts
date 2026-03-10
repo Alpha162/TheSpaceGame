@@ -8,6 +8,7 @@ import {
     PowerPriority, NODE_REPAIR_POWER_COST
 } from '../../utils/Constants';
 import { distanceBetween } from '../../utils/Helpers';
+import { SoundManager } from '../../systems/SoundManager';
 
 export class Blaster extends GameNode {
     private fireCooldown = 0;
@@ -90,6 +91,7 @@ export class Blaster extends GameNode {
                     BLASTER_DAMAGE * this.damageMultiplier,
                     BLASTER_PROJECTILE_SPEED
                 );
+                SoundManager.play('blasterFire');
             }
         }
 

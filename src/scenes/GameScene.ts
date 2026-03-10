@@ -17,6 +17,7 @@ import { MineralManager } from '../systems/MineralManager';
 import { HUD } from '../ui/HUD';
 import { BuildMenu } from '../ui/BuildMenu';
 import { SpawnPanel } from '../ui/SpawnPanel';
+import { SoundManager } from '../systems/SoundManager';
 
 export class GameScene extends Phaser.Scene {
     wasd!: { W: Phaser.Input.Keyboard.Key; A: Phaser.Input.Keyboard.Key; S: Phaser.Input.Keyboard.Key; D: Phaser.Input.Keyboard.Key };
@@ -218,8 +219,8 @@ export class GameScene extends Phaser.Scene {
         const pauseZone = this.add.zone(viewW - 42 * s, 18 * s, 76 * s, 28 * s)
             .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
 
-        pauseZone.on('pointerdown', () => this.togglePause());
-        pauseZone.on('pointerover', () => this.pauseButton.setColor('#00e5ff'));
+        pauseZone.on('pointerdown', () => { SoundManager.play('uiClick'); this.togglePause(); });
+        pauseZone.on('pointerover', () => { this.pauseButton.setColor('#00e5ff'); SoundManager.play('uiHover'); });
         pauseZone.on('pointerout', () => this.pauseButton.setColor('#ffffff'));
 
         // Pause overlay (hidden by default)

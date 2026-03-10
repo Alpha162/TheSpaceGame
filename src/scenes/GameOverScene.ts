@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { COLOUR_WHITE, COLOUR_RED, UI_SCALE } from '../utils/Constants';
+import { SoundManager } from '../systems/SoundManager';
 
 export class GameOverScene extends Phaser.Scene {
     constructor() {
@@ -43,9 +44,10 @@ export class GameOverScene extends Phaser.Scene {
             padding: { x: 20 * s, y: 10 * s }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        restartButton.on('pointerover', () => restartButton.setColor('#00e5ff'));
+        restartButton.on('pointerover', () => { restartButton.setColor('#00e5ff'); SoundManager.play('uiHover'); });
         restartButton.on('pointerout', () => restartButton.setColor('#ffffff'));
         restartButton.on('pointerdown', () => {
+            SoundManager.play('uiClick');
             this.scene.start('GameScene');
         });
 
@@ -57,9 +59,10 @@ export class GameOverScene extends Phaser.Scene {
             padding: { x: 20 * s, y: 10 * s }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        menuButton.on('pointerover', () => menuButton.setColor('#00e5ff'));
+        menuButton.on('pointerover', () => { menuButton.setColor('#00e5ff'); SoundManager.play('uiHover'); });
         menuButton.on('pointerout', () => menuButton.setColor('#666666'));
         menuButton.on('pointerdown', () => {
+            SoundManager.play('uiClick');
             this.scene.start('MenuScene');
         });
     }

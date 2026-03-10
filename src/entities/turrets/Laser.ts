@@ -8,6 +8,7 @@ import {
     PowerPriority, NODE_REPAIR_POWER_COST
 } from '../../utils/Constants';
 import { distanceBetween } from '../../utils/Helpers';
+import { SoundManager } from '../../systems/SoundManager';
 
 export class Laser extends GameNode {
     private combatSystem: CombatSystem | null = null;
@@ -81,6 +82,7 @@ export class Laser extends GameNode {
                 this.lockTimer += delta;
                 if (this.lockTimer >= LASER_LOCK_TIME_MS) {
                     this.isLocked = true;
+                    SoundManager.play('laserLock');
                 }
             }
 
