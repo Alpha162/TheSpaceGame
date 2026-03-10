@@ -5,7 +5,8 @@ import {
     STAR_LAYER_COUNT, STARS_PER_LAYER, STAR_SIZES, STAR_ALPHAS,
     COLOUR_WHITE, COLOUR_PANEL, COLOUR_PANEL_BORDER,
     CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP,
-    ASTEROID_COUNT, ASTEROID_MIN_HUB_DIST, ASTEROID_RADIUS
+    ASTEROID_COUNT, ASTEROID_MIN_HUB_DIST, ASTEROID_RADIUS,
+    SPEED_MULTIPLIER_OPTIONS, SPEED_RAMP_RATE
 } from '../utils/Constants';
 import { CommandHub } from '../entities/CommandHub';
 import { MineralAsteroid } from '../entities/MineralAsteroid';
@@ -44,6 +45,12 @@ export class GameScene extends Phaser.Scene {
     private pauseText!: Phaser.GameObjects.Text;
     private pauseButton!: Phaser.GameObjects.Text;
     private uiCam!: Phaser.Cameras.Scene2D.Camera;
+
+    // Speed control
+    private shiftKey!: Phaser.Input.Keyboard.Key;
+    currentSpeed = 1.0;
+    targetSpeedMultiplier = SPEED_MULTIPLIER_OPTIONS[0];
+    private speedMultiplierIndex = 0;
 
     constructor() {
         super({ key: 'GameScene' });
@@ -126,6 +133,7 @@ export class GameScene extends Phaser.Scene {
                 S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
                 D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
             };
+            this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
         }
 
         // Mouse wheel zoom toward pointer position
@@ -277,13 +285,24 @@ export class GameScene extends Phaser.Scene {
         this.handleCameraMovement();
 
         if (!this.isPaused) {
+            // Speed ramping (uses real delta, not scaled)
+            const shiftHeld = this.shiftKey?.isDown ?? false;
+            const rampTarget = shiftHeld ? this.targetSpeedMultiplier : 1.0;
+            const rampStep = SPEED_RAMP_RATE * (delta / 1000);
+            if (this.currentSpeed < rampTarget) {
+                this.currentSpeed = Math.min(this.currentSpeed + rampStep, rampTarget);
+            } else if (this.currentSpeed > rampTarget) {
+                this.currentSpeed = Math.max(this.currentSpeed - rampStep, rampTarget);
+            }
+
+            const scaledDelta = delta * this.currentSpeed;
             this.buildSystem.update();
-            this.combatSystem.update(delta);
-            this.mineralManager.update(delta);
-            this.powerNetwork.update(delta);
+            this.combatSystem.update(scaledDelta);
+            this.mineralManager.update(scaledDelta);
+            this.powerNetwork.update(scaledDelta);
         }
 
-        this.hud.update();
+        this.hud.update(delta);
         this.spawnPanel.update();
     }
 
@@ -327,6 +346,11 @@ export class GameScene extends Phaser.Scene {
             gfx.setScrollFactor(0.2 + layer * 0.3);
             this.starLayers.push(gfx);
         }
+    }
+
+    cycleSpeedMultiplier(): void {
+        this.speedMultiplierIndex = (this.speedMultiplierIndex + 1) % SPEED_MULTIPLIER_OPTIONS.length;
+        this.targetSpeedMultiplier = SPEED_MULTIPLIER_OPTIONS[this.speedMultiplierIndex];
     }
 
     private handleCameraMovement(): void {

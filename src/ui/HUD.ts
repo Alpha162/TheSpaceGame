@@ -1,15 +1,18 @@
 import Phaser from 'phaser';
 import { ResourceManager } from '../systems/ResourceManager';
 import { PowerNetwork } from '../systems/PowerNetwork';
+import { SoundManager } from '../systems/SoundManager';
 import {
     COLOUR_PANEL, COLOUR_PANEL_BORDER,
     COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED, COLOUR_PURPLE,
     UI_SCALE
 } from '../utils/Constants';
+import type { GameScene } from '../scenes/GameScene';
 
 export class HUD {
     private resourceManager: ResourceManager;
     private powerNetwork: PowerNetwork;
+    private gameScene: GameScene;
     private mineralText: Phaser.GameObjects.Text;
     private powerGenText: Phaser.GameObjects.Text;
     private powerDemandText: Phaser.GameObjects.Text;
@@ -18,11 +21,22 @@ export class HUD {
     private capacitorBar: Phaser.GameObjects.Graphics;
     private bgGraphics: Phaser.GameObjects.Graphics;
 
+    // Speed/TPS display
+    private speedBg: Phaser.GameObjects.Graphics;
+    private speedText: Phaser.GameObjects.Text;
+    private tpsText: Phaser.GameObjects.Text;
+    private shiftLabel: Phaser.GameObjects.Text;
+    private shiftZone: Phaser.GameObjects.Zone;
+    private frameCount = 0;
+    private fpsAccumulator = 0;
+    private displayTps = 0;
+
     private allObjects: Phaser.GameObjects.GameObject[] = [];
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
         this.resourceManager = resourceManager;
         this.powerNetwork = powerNetwork;
+        this.gameScene = scene as GameScene;
 
         const s = UI_SCALE;
         const viewW = scene.scale.width;
@@ -71,10 +85,54 @@ export class HUD {
         this.capacitorBar.setScrollFactor(0);
         this.capacitorBar.setDepth(201);
 
+        // Speed info panel (below main HUD)
+        this.speedBg = scene.add.graphics();
+        this.speedBg.setScrollFactor(0).setDepth(200);
+        this.speedBg.fillStyle(COLOUR_PANEL, 0.85);
+        this.speedBg.fillRoundedRect(4 * s, 60 * s, 220 * s, 28 * s, 4 * s);
+        this.speedBg.lineStyle(1 * s, COLOUR_PANEL_BORDER, 0.6);
+        this.speedBg.strokeRoundedRect(4 * s, 60 * s, 220 * s, 28 * s, 4 * s);
+
+        this.speedText = scene.add.text(12 * s, 66 * s, 'Speed: 1.0x', {
+            fontFamily: 'monospace',
+            fontSize: `${Math.round(11 * s)}px`,
+            color: '#00e5ff'
+        }).setScrollFactor(0).setDepth(201);
+
+        this.tpsText = scene.add.text(100 * s, 66 * s, 'TPS: 60', {
+            fontFamily: 'monospace',
+            fontSize: `${Math.round(11 * s)}px`,
+            color: '#00e5ff'
+        }).setScrollFactor(0).setDepth(201);
+
+        // Clickable multiplier selector
+        this.shiftLabel = scene.add.text(163 * s, 66 * s, `[Shift: ${this.gameScene.targetSpeedMultiplier}x]`, {
+            fontFamily: 'monospace',
+            fontSize: `${Math.round(11 * s)}px`,
+            color: '#888888'
+        }).setScrollFactor(0).setDepth(202);
+
+        this.shiftZone = scene.add.zone(185 * s, 74 * s, 60 * s, 24 * s)
+            .setScrollFactor(0).setDepth(203).setInteractive({ useHandCursor: true });
+
+        this.shiftZone.on('pointerdown', () => {
+            SoundManager.play('uiClick');
+            this.gameScene.cycleSpeedMultiplier();
+        });
+        this.shiftZone.on('pointerover', () => {
+            this.shiftLabel.setColor('#00e5ff');
+            SoundManager.play('uiHover');
+        });
+        this.shiftZone.on('pointerout', () => {
+            this.shiftLabel.setColor('#888888');
+        });
+
         this.allObjects = [
             this.bgGraphics, this.mineralText, this.powerGenText,
             this.powerDemandText, this.powerBar,
-            this.capacitorText, this.capacitorBar
+            this.capacitorText, this.capacitorBar,
+            this.speedBg, this.speedText, this.tpsText,
+            this.shiftLabel, this.shiftZone
         ];
     }
 
@@ -82,7 +140,18 @@ export class HUD {
         return this.allObjects;
     }
 
-    update(): void {
+    update(delta?: number): void {
+        // TPS tracking
+        if (delta !== undefined) {
+            this.frameCount++;
+            this.fpsAccumulator += delta;
+            if (this.fpsAccumulator >= 1000) {
+                this.displayTps = this.frameCount;
+                this.frameCount = 0;
+                this.fpsAccumulator -= 1000;
+            }
+        }
+
         // Minerals
         const minerals = this.resourceManager.getMinerals();
         this.mineralText.setText(`Minerals: ${minerals}`);
@@ -178,5 +247,13 @@ export class HUD {
             this.capacitorText.setText('');
             this.capacitorText.setVisible(false);
         }
+
+        // Speed & TPS display
+        const speed = this.gameScene.currentSpeed;
+        const speedColour = speed > 1.05 ? '#ffab00' : '#00e5ff';
+        this.speedText.setColor(speedColour);
+        this.speedText.setText(`Speed: ${speed.toFixed(1)}x`);
+        this.tpsText.setText(`TPS: ${this.displayTps}`);
+        this.shiftLabel.setText(`[Shift: ${this.gameScene.targetSpeedMultiplier}x]`);
     }
 }

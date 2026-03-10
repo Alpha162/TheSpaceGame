@@ -229,3 +229,7 @@ export const MINERAL_PICKUP_LIFETIME = 15000;      // ms before uncollected pick
 export const NODE_REPAIR_DELAY_MS = 3000;    // ms after last damage before repair starts
 export const NODE_REPAIR_RATE = 0.02;        // health per ms (= 20 HP/sec)
 export const NODE_REPAIR_POWER_COST = 3;     // extra power per tick while repairing
+
+// Speed control
+export const SPEED_MULTIPLIER_OPTIONS = [2, 3, 5, 10]; // selectable target multipliers
+export const SPEED_RAMP_RATE = 3.0;          // multiplier units ramped per second
