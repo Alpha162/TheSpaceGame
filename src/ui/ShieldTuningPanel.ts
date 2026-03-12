@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { Shield } from '../entities/defence/Shield';
+import { CommandHub } from '../entities/CommandHub';
 import { BuildSystem } from '../systems/BuildSystem';
 import { PowerNetwork } from '../systems/PowerNetwork';
 import type { ShieldCluster } from '../systems/ShieldClusterManager';
@@ -8,6 +9,8 @@ import {
     COLOUR_PANEL, COLOUR_PANEL_BORDER, COLOUR_AMBER, COLOUR_RED,
     UI_SCALE
 } from '../utils/Constants';
+
+type TunableShield = Shield | CommandHub;
 
 // Panel layout constants (before DPI scaling)
 const PANEL_W = 160;
@@ -165,6 +168,10 @@ export class ShieldTuningPanel {
         this.setVisible(false);
     }
 
+    private isTunableShield(node: unknown): node is TunableShield {
+        return node instanceof Shield || node instanceof CommandHub;
+    }
+
     private applySliderDrag(pointer: Phaser.Input.Pointer): void {
         const s = this.s;
         const sliderLeft = this.panelX + (PANEL_W - SLIDER_TRACK_W) / 2 * s;
@@ -172,7 +179,7 @@ export class ShieldTuningPanel {
         const tuning = Math.max(0, Math.min(1, (pointer.x - sliderLeft) / sliderWidth));
 
         const selected = this.buildSystem.getSelectedNode();
-        if (!(selected instanceof Shield)) return;
+        if (!this.isTunableShield(selected)) return;
 
         const clusterMgr = this.powerNetwork.getShieldClusterManager();
         const cluster = clusterMgr.getClusterFor(selected);
@@ -186,7 +193,7 @@ export class ShieldTuningPanel {
 
     private onLockToggle(): void {
         const selected = this.buildSystem.getSelectedNode();
-        if (!(selected instanceof Shield)) return;
+        if (!this.isTunableShield(selected)) return;
 
         const clusterMgr = this.powerNetwork.getShieldClusterManager();
         const cluster = clusterMgr.getClusterFor(selected);
@@ -226,7 +233,7 @@ export class ShieldTuningPanel {
     update(): void {
         const selected = this.buildSystem.getSelectedNode();
 
-        if (!(selected instanceof Shield) || !selected.isFullyConstructed()) {
+        if (!this.isTunableShield(selected) || !selected.isFullyConstructed()) {
             if (this.visible) this.setVisible(false);
             this.isDragging = false;
             return;
@@ -249,8 +256,10 @@ export class ShieldTuningPanel {
             heat = active.length > 0
                 ? active.reduce((sum, m) => sum + m.getHeat(), 0) / active.length
                 : 0;
-        } else {
+        } else if (shield instanceof Shield) {
             heat = shield.heatLevel;
+        } else {
+            heat = (shield as CommandHub).hubShieldHeat;
         }
 
         const s = this.s;

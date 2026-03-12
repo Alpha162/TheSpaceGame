@@ -248,7 +248,11 @@ export class BuildSystem {
         let closest: GameNode | null = null;
         let closestDist = Infinity;
 
-        for (const node of this.placedNodes) {
+        // Check placed nodes and the hub
+        const hub = this.powerNetwork.getHub();
+        const selectableNodes: GameNode[] = hub ? [hub, ...this.placedNodes] : [...this.placedNodes];
+
+        for (const node of selectableNodes) {
             const dist = distanceBetween(worldPoint.x, worldPoint.y, node.x, node.y);
             if (dist <= node.nodeRadius + 8 && dist < closestDist) {
                 closest = node;
@@ -258,13 +262,21 @@ export class BuildSystem {
 
         // If no node hit by radius, check if click is inside a shield bubble
         if (!closest) {
-            for (const node of this.placedNodes) {
+            for (const node of selectableNodes) {
                 if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
                     const dist = distanceBetween(worldPoint.x, worldPoint.y, node.x, node.y);
                     if (dist <= node.bubbleRadius && dist < closestDist) {
                         closest = node;
                         closestDist = dist;
                     }
+                }
+            }
+            // Also check hub shield bubble
+            if (!closest && hub && hub.isHubShieldUp()) {
+                const dist = distanceBetween(worldPoint.x, worldPoint.y, hub.x, hub.y);
+                if (dist <= hub.hubShieldRadius && dist < closestDist) {
+                    closest = hub;
+                    closestDist = dist;
                 }
             }
         }
@@ -297,6 +309,7 @@ export class BuildSystem {
 
     private deleteSelected(): void {
         if (!this.selectedNode) return;
+        if (this.selectedNode instanceof CommandHub) return; // Can't delete the hub
 
         const node = this.selectedNode;
         const refundCost = this.getNodeBuildCost(node);
