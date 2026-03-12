@@ -215,6 +215,17 @@ export const LANCER_LOCK_TIME_MS = 400;
 export const LANCER_REWARD = 15;
 export const LANCER_RADIUS = 5;
 
+// Tank Enemy Shield
+export const TANK_SHIELD_RADIUS = 40;
+export const TANK_SHIELD_HEAT_DECAY = 0.002;          // Slower decay than player shields (0.003) — tougher
+export const TANK_SHIELD_HEAT_PER_DAMAGE = 0.08;      // Slightly less heat per hit than player (0.1) — tankier
+export const TANK_SHIELD_COOLDOWN_MS = 6000;           // 6 seconds to redeploy after collapse
+
+// Scout Enemy Shield
+export const SCOUT_SHIELD_RADIUS = 20;
+export const SCOUT_SHIELD_HEAT_PER_DAMAGE = 0.4;      // Very high — 2-3 hits collapses it
+export const SCOUT_SHIELD_ONE_SHOT = true;             // Shield does not regenerate after collapse
+
 // Upgrade constants
 export const UPGRADE_COST_FRACTION = 0.7; // upgrade costs 70% of original build cost
 

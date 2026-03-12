@@ -144,10 +144,15 @@ export class CombatSystem {
         const targetIsEnemy = target instanceof Enemy;
 
         if (targetIsEnemy) {
-            // Player weapon → enemy: currently no enemy shields (Phase 4), direct hit
+            // Player weapon → enemy: check enemy shield first
             const enemy = target as Enemy;
-            enemy.takeDamage(damage);
-            SoundManager.play('hit');
+            if (enemy.isShieldUp()) {
+                enemy.absorbShieldDamage(damage);
+                SoundManager.play('shieldHit');
+            } else {
+                enemy.takeDamage(damage);
+                SoundManager.play('hit');
+            }
         } else {
             // Enemy weapon → player node: check player shields first
             const hub = this.powerNetwork.getHub();

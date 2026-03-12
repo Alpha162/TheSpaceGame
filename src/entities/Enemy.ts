@@ -7,7 +7,9 @@ import {
     SWARM_HEALTH, SWARM_SPEED, SWARM_DAMAGE, SWARM_RADIUS, SWARM_REWARD,
     LANCER_HP, LANCER_SPEED, LANCER_BEAM_DPS, LANCER_BEAM_RANGE,
     LANCER_LOCK_TIME_MS, LANCER_REWARD, LANCER_RADIUS,
-    COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER,
+    TANK_SHIELD_RADIUS, TANK_SHIELD_HEAT_DECAY, TANK_SHIELD_HEAT_PER_DAMAGE, TANK_SHIELD_COOLDOWN_MS,
+    SCOUT_SHIELD_RADIUS, SCOUT_SHIELD_HEAT_PER_DAMAGE,
+    COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_CYAN,
     COLOUR_SCOUT, COLOUR_TANK, COLOUR_SWARM, COLOUR_LANCER
 } from '../utils/Constants';
 import type { CombatSystem } from '../systems/CombatSystem';
@@ -102,6 +104,18 @@ export class Enemy {
     private lancerTarget: GameNode | null = null;
     private combatSystem: CombatSystem | null = null;
 
+    // Enemy shield state (Tank and Scout only)
+    hasShield = false;
+    shieldActive = false;
+    shieldHeat = 0;
+    shieldRadius = 0;
+    private shieldHeatDecay = 0;
+    private shieldHeatPerDamage = 0;
+    private shieldCooldownMs = 0;
+    private shieldCooldownTimer = 0;
+    private shieldOneShot = false;
+    private shieldGraphics: Phaser.GameObjects.Graphics | null = null;
+
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number, type: EnemyType = 'drone') {
         const config = ENEMY_CONFIGS[type];
         this.enemyType = type;
@@ -126,6 +140,29 @@ export class Enemy {
         if (type === 'lancer') {
             this.lancerBeamGraphics = scene.add.graphics();
             this.lancerBeamGraphics.setDepth(7);
+        }
+
+        // Initialize enemy shields
+        if (type === 'tank') {
+            this.hasShield = true;
+            this.shieldActive = true;
+            this.shieldRadius = TANK_SHIELD_RADIUS;
+            this.shieldHeatDecay = TANK_SHIELD_HEAT_DECAY;
+            this.shieldHeatPerDamage = TANK_SHIELD_HEAT_PER_DAMAGE;
+            this.shieldCooldownMs = TANK_SHIELD_COOLDOWN_MS;
+            this.shieldOneShot = false;
+            this.shieldGraphics = scene.add.graphics();
+            this.shieldGraphics.setDepth(4); // Below enemy body
+        } else if (type === 'scout') {
+            this.hasShield = true;
+            this.shieldActive = true;
+            this.shieldRadius = SCOUT_SHIELD_RADIUS;
+            this.shieldHeatDecay = 0; // No decay — heat only goes up
+            this.shieldHeatPerDamage = SCOUT_SHIELD_HEAT_PER_DAMAGE;
+            this.shieldCooldownMs = 0;
+            this.shieldOneShot = true; // Does not regenerate
+            this.shieldGraphics = scene.add.graphics();
+            this.shieldGraphics.setDepth(4);
         }
 
         this.draw();
@@ -156,6 +193,59 @@ export class Enemy {
 
     getLancerState(): LancerState { return this.lancerState; }
     isLancerFiring(): boolean { return this.enemyType === 'lancer' && this.lancerState === 'fire'; }
+
+    /** Is this enemy's shield currently blocking damage? */
+    isShieldUp(): boolean {
+        return this.hasShield && this.shieldActive;
+    }
+
+    /** Absorb damage on enemy shield. Returns damage that passed through (0 if absorbed). */
+    absorbShieldDamage(damage: number): number {
+        if (!this.isShieldUp()) return damage;
+
+        const heatIncrease = damage * this.shieldHeatPerDamage;
+        this.shieldHeat += heatIncrease;
+
+        if (this.shieldHeat >= 1) {
+            this.collapseEnemyShield();
+        }
+
+        return 0; // Fully absorbed
+    }
+
+    private collapseEnemyShield(): void {
+        this.shieldHeat = 1;
+        this.shieldActive = false;
+
+        if (this.shieldOneShot) {
+            // Scout: shield gone for good
+            this.shieldCooldownTimer = 0;
+        } else {
+            // Tank: start cooldown
+            this.shieldCooldownTimer = this.shieldCooldownMs;
+        }
+    }
+
+    private updateEnemyShield(delta: number): void {
+        if (!this.hasShield) return;
+
+        if (this.shieldActive) {
+            // Heat decay
+            if (this.shieldHeat > 0 && this.shieldHeatDecay > 0) {
+                this.shieldHeat = Math.max(0, this.shieldHeat - this.shieldHeatDecay);
+            }
+        } else if (!this.shieldOneShot && this.shieldCooldownTimer > 0) {
+            // Cooldown for redeploy (Tank only)
+            this.shieldCooldownTimer -= delta;
+            if (this.shieldCooldownTimer <= 0) {
+                this.shieldCooldownTimer = 0;
+                this.shieldHeat = 0;
+                this.shieldActive = true;
+            }
+        }
+
+        this.drawEnemyShield();
+    }
 
     /** Scout evasion: dodge incoming friendly projectiles */
     computeScoutEvasion(projectiles: ProjectileInfo[]): void {
@@ -298,6 +388,7 @@ export class Enemy {
             this.attackCooldown -= delta;
         }
 
+        this.updateEnemyShield(delta);
         this.draw();
     }
 
@@ -704,8 +795,39 @@ export class Enemy {
         this.graphics.fillCircle(0, 0, 2);
     }
 
+    private drawEnemyShield(): void {
+        if (!this.shieldGraphics) return;
+        this.shieldGraphics.clear();
+        this.shieldGraphics.x = this.x;
+        this.shieldGraphics.y = this.y;
+
+        if (!this.shieldActive || this.shieldRadius <= 0) return;
+
+        // Shield colour: cyan at baseline (tuning 0.5, balanced)
+        // Until Phase 5 tuning visuals, use cyan with heat-based colour shift
+        const colour = this.shieldHeat < 0.3 ? COLOUR_CYAN :
+            this.shieldHeat < 0.7 ? COLOUR_AMBER : COLOUR_RED;
+        const alpha = 0.3;
+
+        // Outer glow
+        this.shieldGraphics.lineStyle(2, colour, alpha * 0.3);
+        this.shieldGraphics.strokeCircle(0, 0, this.shieldRadius + 2);
+
+        // Main bubble
+        this.shieldGraphics.lineStyle(1.5, colour, alpha * 0.6);
+        this.shieldGraphics.strokeCircle(0, 0, this.shieldRadius);
+
+        // Heat glow
+        if (this.shieldHeat > 0.1) {
+            const heatGlowRadius = this.shieldRadius * 0.4 * this.shieldHeat;
+            this.shieldGraphics.fillStyle(COLOUR_RED, this.shieldHeat * 0.2);
+            this.shieldGraphics.fillCircle(0, 0, heatGlowRadius);
+        }
+    }
+
     destroy(): void {
         if (this.lancerBeamGraphics) this.lancerBeamGraphics.destroy();
+        if (this.shieldGraphics) this.shieldGraphics.destroy();
         this.graphics.destroy();
     }
 }
