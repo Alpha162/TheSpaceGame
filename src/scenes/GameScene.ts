@@ -4,7 +4,7 @@ import {
     CAMERA_SCROLL_SPEED,
     STAR_LAYER_COUNT, STARS_PER_LAYER, STAR_SIZES, STAR_ALPHAS,
     COLOUR_WHITE, COLOUR_PANEL, COLOUR_PANEL_BORDER,
-    CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP,
+    CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP, CAMERA_ZOOM_INITIAL, CAMERA_ZOOM_LERP,
     ASTEROID_COUNT, ASTEROID_MIN_HUB_DIST, ASTEROID_RADIUS,
     SPEED_MULTIPLIER_OPTIONS, SPEED_RAMP_RATE,
     UI_SCALE
@@ -48,6 +48,14 @@ export class GameScene extends Phaser.Scene {
     private pauseText!: Phaser.GameObjects.Text;
     private pauseButton!: Phaser.GameObjects.Text;
     private uiCam!: Phaser.Cameras.Scene2D.Camera;
+
+    // Smooth zoom state
+    private targetZoom = CAMERA_ZOOM_INITIAL;
+    private zoomFocusWorldX = 0;
+    private zoomFocusWorldY = 0;
+    private zoomFocusScreenX = 0;
+    private zoomFocusScreenY = 0;
+    private isZoomAnimating = false;
 
     // Speed control
     private shiftKey!: Phaser.Input.Keyboard.Key;
@@ -104,8 +112,9 @@ export class GameScene extends Phaser.Scene {
         this.shieldTuningPanel = new ShieldTuningPanel(this, this.buildSystem, this.powerNetwork);
         this.buildSystem.setShieldTuningPanel(this.shieldTuningPanel);
 
-        // Camera setup
+        // Camera setup — start zoomed in on the hub
         this.cameras.main.centerOn(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+        this.cameras.main.zoom = CAMERA_ZOOM_INITIAL;
 
         // UI camera – separate from main so zoom doesn't affect HUD
         const uiObjectsList = [
@@ -142,28 +151,23 @@ export class GameScene extends Phaser.Scene {
             this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
         }
 
-        // Mouse wheel zoom toward pointer position
+        // Mouse wheel zoom — smooth, toward pointer position
         this.input.on('wheel', (pointer: Phaser.Input.Pointer, _gos: unknown[], _dx: number, dy: number) => {
-            const cam = this.cameras.main;
-            const oldZoom = cam.zoom;
-            let newZoom: number;
-
             if (dy > 0) {
-                newZoom = Math.max(CAMERA_ZOOM_MIN, oldZoom - CAMERA_ZOOM_STEP);
+                this.targetZoom = Math.max(CAMERA_ZOOM_MIN, this.targetZoom - CAMERA_ZOOM_STEP);
             } else if (dy < 0) {
-                newZoom = Math.min(CAMERA_ZOOM_MAX, oldZoom + CAMERA_ZOOM_STEP);
+                this.targetZoom = Math.min(CAMERA_ZOOM_MAX, this.targetZoom + CAMERA_ZOOM_STEP);
             } else {
                 return;
             }
 
-            // Zoom toward the world point under the mouse
+            const cam = this.cameras.main;
             const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-            cam.zoom = newZoom;
-
-            // After zoom, adjust scroll so worldPoint stays under the mouse
-            const newWorldPoint = cam.getWorldPoint(pointer.x, pointer.y);
-            cam.scrollX += worldPoint.x - newWorldPoint.x;
-            cam.scrollY += worldPoint.y - newWorldPoint.y;
+            this.zoomFocusWorldX = worldPoint.x;
+            this.zoomFocusWorldY = worldPoint.y;
+            this.zoomFocusScreenX = pointer.x;
+            this.zoomFocusScreenY = pointer.y;
+            this.isZoomAnimating = true;
         });
 
         // Middle-mouse or right-mouse drag to pan camera
@@ -287,8 +291,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     update(_time: number, delta: number): void {
-        // Camera movement always works, even when paused
+        // Camera movement and smooth zoom always work, even when paused
         this.handleCameraMovement();
+        this.handleSmoothZoom();
 
         if (!this.isPaused) {
             // Speed ramping (uses real delta, not scaled)
@@ -358,6 +363,25 @@ export class GameScene extends Phaser.Scene {
     cycleSpeedMultiplier(): void {
         this.speedMultiplierIndex = (this.speedMultiplierIndex + 1) % SPEED_MULTIPLIER_OPTIONS.length;
         this.targetSpeedMultiplier = SPEED_MULTIPLIER_OPTIONS[this.speedMultiplierIndex];
+    }
+
+    private handleSmoothZoom(): void {
+        if (!this.isZoomAnimating) return;
+
+        const cam = this.cameras.main;
+        const diff = this.targetZoom - cam.zoom;
+
+        if (Math.abs(diff) < 0.001) {
+            cam.zoom = this.targetZoom;
+            this.isZoomAnimating = false;
+        } else {
+            cam.zoom += diff * CAMERA_ZOOM_LERP;
+        }
+
+        // Keep the focus world point under the cursor position
+        const currentWorld = cam.getWorldPoint(this.zoomFocusScreenX, this.zoomFocusScreenY);
+        cam.scrollX += this.zoomFocusWorldX - currentWorld.x;
+        cam.scrollY += this.zoomFocusWorldY - currentWorld.y;
     }
 
     private handleCameraMovement(): void {

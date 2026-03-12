@@ -6,8 +6,10 @@ export const VIEWPORT_HEIGHT = 600;
 export const CAMERA_SCROLL_SPEED = 8;
 export const CAMERA_EDGE_ZONE = 32;
 export const CAMERA_ZOOM_MIN = 0.4;
-export const CAMERA_ZOOM_MAX = 2.0;
-export const CAMERA_ZOOM_STEP = 0.1;
+export const CAMERA_ZOOM_MAX = 4.0;
+export const CAMERA_ZOOM_STEP = 0.15;
+export const CAMERA_ZOOM_INITIAL = 1.5;
+export const CAMERA_ZOOM_LERP = 0.15;
 
 // Starfield
 export const STAR_LAYER_COUNT = 3;
