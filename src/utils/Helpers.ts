@@ -13,11 +13,11 @@ export function distanceBetween(
  * Returns { colour: 0xRRGGBB, opacity: number }.
  */
 const TUNING_ANCHORS: Array<{ t: number; r: number; g: number; b: number; a: number }> = [
-    { t: 0.0,  r: 180, g: 150, b: 100, a: 0.60 },
-    { t: 0.25, r: 200, g: 170, b: 80,  a: 0.45 },
+    { t: 0.0,  r: 180, g: 150, b: 100, a: 0.55 },
+    { t: 0.25, r: 200, g: 170, b: 80,  a: 0.42 },
     { t: 0.5,  r: 0,   g: 220, b: 255, a: 0.30 },
-    { t: 0.75, r: 120, g: 140, b: 255, a: 0.20 },
-    { t: 1.0,  r: 180, g: 120, b: 255, a: 0.12 },
+    { t: 0.75, r: 120, g: 140, b: 255, a: 0.25 },
+    { t: 1.0,  r: 180, g: 120, b: 255, a: 0.22 },
 ];
 
 export function getTuningVisual(tuning: number): { colour: number; opacity: number } {
