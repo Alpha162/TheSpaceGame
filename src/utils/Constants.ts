@@ -246,8 +246,8 @@ export const COLOUR_TANK = 0xaa44ff;      // purple
 export const COLOUR_SWARM = 0xffdd00;     // yellow
 export const COLOUR_LANCER = 0xff8800;    // amber/orange — distinct from player laser (cyan)
 
-// UI scale factor (matches devicePixelRatio for crisp rendering)
-export const UI_SCALE = window.devicePixelRatio || 1;
+// UI scale factor (DPR × size boost for comfortable readability on high-res displays)
+export const UI_SCALE = (window.devicePixelRatio || 1) * 1.8;
 
 // Mineral pickup constants
 export const MINERAL_PICKUP_TRACTOR_RANGE = 120;  // px — nodes pull pickups within this range
