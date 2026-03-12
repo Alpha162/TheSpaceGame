@@ -401,4 +401,15 @@ export class ShieldClusterManager {
     getClusterFor(shield: IClusterShield): ShieldCluster | undefined {
         return this.memberToCluster.get(shield);
     }
+
+    /** Set manual tuning for an entire cluster. */
+    setClusterManualTuning(cluster: ShieldCluster, value: number): void {
+        cluster.clusterTuning = Math.max(SHIELD_TUNE_MIN, Math.min(SHIELD_TUNE_MAX, value));
+        cluster.clusterManualLock = true;
+    }
+
+    /** Clear the manual lock on a cluster, allowing auto-drift to resume. */
+    clearClusterManualLock(cluster: ShieldCluster): void {
+        cluster.clusterManualLock = false;
+    }
 }

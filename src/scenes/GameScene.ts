@@ -18,6 +18,7 @@ import { MineralManager } from '../systems/MineralManager';
 import { HUD } from '../ui/HUD';
 import { BuildMenu } from '../ui/BuildMenu';
 import { SpawnPanel } from '../ui/SpawnPanel';
+import { ShieldTuningPanel } from '../ui/ShieldTuningPanel';
 import { SoundManager } from '../systems/SoundManager';
 
 export class GameScene extends Phaser.Scene {
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
     hud!: HUD;
     buildMenu!: BuildMenu;
     spawnPanel!: SpawnPanel;
+    shieldTuningPanel!: ShieldTuningPanel;
     asteroids: MineralAsteroid[] = [];
     starLayers: Phaser.GameObjects.Graphics[] = [];
     private uiObjects: Set<Phaser.GameObjects.GameObject> = new Set();
@@ -98,6 +100,8 @@ export class GameScene extends Phaser.Scene {
         this.hud = new HUD(this, this.resourceManager, this.powerNetwork);
         this.buildMenu = new BuildMenu(this, this.buildSystem);
         this.spawnPanel = new SpawnPanel(this, this.combatSystem);
+        this.shieldTuningPanel = new ShieldTuningPanel(this, this.buildSystem, this.powerNetwork);
+        this.buildSystem.setShieldTuningPanel(this.shieldTuningPanel);
 
         // Camera setup
         this.cameras.main.centerOn(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
@@ -106,7 +110,8 @@ export class GameScene extends Phaser.Scene {
         const uiObjectsList = [
             ...this.hud.getGameObjects(),
             ...this.buildMenu.getGameObjects(),
-            ...this.spawnPanel.getGameObjects()
+            ...this.spawnPanel.getGameObjects(),
+            ...this.shieldTuningPanel.getGameObjects()
         ];
         this.uiObjects = new Set(uiObjectsList);
         this.cameras.main.ignore(uiObjectsList);
@@ -304,6 +309,7 @@ export class GameScene extends Phaser.Scene {
 
         this.hud.update(delta);
         this.spawnPanel.update();
+        this.shieldTuningPanel.update();
     }
 
     private spawnAsteroids(): void {
