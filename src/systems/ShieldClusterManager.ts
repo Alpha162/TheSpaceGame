@@ -462,7 +462,7 @@ export class ShieldClusterManager {
         // Get base colour from tuning visual
         const tuningVis = getTuningVisual(tuning);
         const baseColour = tuningVis.colour;
-        const baseAlpha = tuningVis.alpha;
+        const baseAlpha = tuningVis.opacity;
 
         // Use a custom rendering approach: generate hex grid at cluster centre,
         // but only draw cells that fall inside at least one member shield circle.
