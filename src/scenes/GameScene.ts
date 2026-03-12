@@ -6,7 +6,8 @@ import {
     COLOUR_WHITE, COLOUR_PANEL, COLOUR_PANEL_BORDER,
     CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX, CAMERA_ZOOM_STEP,
     ASTEROID_COUNT, ASTEROID_MIN_HUB_DIST, ASTEROID_RADIUS,
-    SPEED_MULTIPLIER_OPTIONS, SPEED_RAMP_RATE
+    SPEED_MULTIPLIER_OPTIONS, SPEED_RAMP_RATE,
+    UI_SCALE
 } from '../utils/Constants';
 import { CommandHub } from '../entities/CommandHub';
 import { MineralAsteroid } from '../entities/MineralAsteroid';
@@ -213,7 +214,7 @@ export class GameScene extends Phaser.Scene {
 
     private createPauseButton(): void {
         const viewW = this.scale.width;
-        const s = (window.devicePixelRatio || 1);
+        const s = UI_SCALE;
 
         // Pause button
         const btnBg = this.add.graphics();
