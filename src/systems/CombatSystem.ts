@@ -304,13 +304,9 @@ export class CombatSystem {
             shield.applyTuningDrift(damageType);
             shield.lastTuningDriftTime = now;
         } else {
-            // CommandHub solo — apply drift directly
+            // CommandHub solo — use same drift logic as Shield
             const hub = shield as CommandHub;
-            if (damageType < hub.tuning) {
-                hub.tuning = Math.max(0, hub.tuning - 0.03);
-            } else if (damageType > hub.tuning) {
-                hub.tuning = Math.min(1, hub.tuning + 0.03);
-            }
+            hub.applyTuningDrift(damageType);
             hub.lastTuningDriftTime = now;
         }
     }

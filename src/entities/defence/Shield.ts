@@ -231,8 +231,9 @@ export class Shield extends GameNode implements IClusterShield {
         }
     }
 
-    /** Idle decay: relax tuning toward 0.5 each frame */
+    /** Idle decay: relax tuning toward 0.5 each frame (skipped when manualLock is true) */
     updateTuningDecay(): void {
+        if (this.manualLock) return;
         if (this.tuning > 0.5) {
             this.tuning = Math.max(0.5, this.tuning - SHIELD_TUNE_DRIFT_DECAY);
         } else if (this.tuning < 0.5) {

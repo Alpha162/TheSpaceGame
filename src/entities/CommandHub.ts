@@ -4,8 +4,10 @@ import {
     COMMAND_HUB_HEALTH, COMMAND_HUB_POWER_GEN, COMMAND_HUB_RADIUS,
     COMMAND_HUB_SHIELD_RADIUS, COMMAND_HUB_SHIELD_HEAT_DECAY,
     SHIELD_ABSORB_HEAT_PER_DAMAGE, SHIELD_DEPLOY_SPEED,
-    SHIELD_TUNE_DEFAULT,
-    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_RED
+    SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
+    SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_MANUAL_DRIFT_MULT,
+    SHIELD_TUNE_DRIFT_DECAY,
+    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_RED, COLOUR_SELECTION
 } from '../utils/Constants';
 import { hexagonPoints, getTuningVisual } from '../utils/Helpers';
 import type { Shield } from './defence/Shield';
@@ -116,6 +118,10 @@ export class CommandHub extends GameNode implements IClusterShield {
             if (this.hubShieldHeat > 0) {
                 this.hubShieldHeat = Math.max(0, this.hubShieldHeat - COMMAND_HUB_SHIELD_HEAT_DECAY);
             }
+            // Idle tuning decay (only if not in a cluster — cluster manages its own)
+            if (!this.inCluster) {
+                this.updateTuningDecay();
+            }
         }
 
         this.drawShieldBubble();
@@ -147,6 +153,42 @@ export class CommandHub extends GameNode implements IClusterShield {
 
     isShieldActive(): boolean {
         return this.isHubShieldUp();
+    }
+
+    isFullyConstructed(): boolean {
+        return true; // Hub is always fully constructed
+    }
+
+    setManualTuning(value: number): void {
+        this.tuning = Math.max(SHIELD_TUNE_MIN, Math.min(SHIELD_TUNE_MAX, value));
+        this.manualLock = true;
+    }
+
+    clearManualLock(): void {
+        this.manualLock = false;
+    }
+
+    /** Auto-drift tuning toward incoming damage type */
+    applyTuningDrift(incomingDamageType: number): void {
+        const driftRate = this.manualLock
+            ? SHIELD_TUNE_DRIFT_PER_HIT * SHIELD_TUNE_MANUAL_DRIFT_MULT
+            : SHIELD_TUNE_DRIFT_PER_HIT;
+
+        if (incomingDamageType < this.tuning) {
+            this.tuning = Math.max(SHIELD_TUNE_MIN, this.tuning - driftRate);
+        } else if (incomingDamageType > this.tuning) {
+            this.tuning = Math.min(SHIELD_TUNE_MAX, this.tuning + driftRate);
+        }
+    }
+
+    /** Idle decay: relax tuning toward 0.5 each frame (skipped when manualLock is true) */
+    updateTuningDecay(): void {
+        if (this.manualLock) return;
+        if (this.tuning > 0.5) {
+            this.tuning = Math.max(0.5, this.tuning - SHIELD_TUNE_DRIFT_DECAY);
+        } else if (this.tuning < 0.5) {
+            this.tuning = Math.min(0.5, this.tuning + SHIELD_TUNE_DRIFT_DECAY);
+        }
     }
 
     private drawShieldBubble(): void {
@@ -302,6 +344,12 @@ export class CommandHub extends GameNode implements IClusterShield {
 
         const colour = this.getStateColour();
         const alpha = this.nodeState === 'offline' ? 0.4 : 1;
+
+        // Selection ring
+        if (this.selected) {
+            this.graphics.lineStyle(2, COLOUR_SELECTION, 0.8);
+            this.graphics.strokeCircle(0, 0, this.nodeRadius + 6);
+        }
 
         // Outer glow
         this.graphics.fillStyle(colour, this.glowAlpha * 0.2 * alpha);
