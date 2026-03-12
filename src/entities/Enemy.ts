@@ -501,13 +501,15 @@ export class Enemy {
             this.y += vy;
         }
 
-        // Apply type-specific behavioral forces
-        if (this.enemyType === 'scout') {
-            this.x += this.evasionFx * this.speed * delta;
-            this.y += this.evasionFy * this.speed * delta;
-        } else if (this.enemyType === 'drone') {
-            this.x += this.flockFx * this.speed * delta;
-            this.y += this.flockFy * this.speed * delta;
+        // Apply type-specific behavioral forces (skip when blocked by shield)
+        if (!this.blockedByShield) {
+            if (this.enemyType === 'scout') {
+                this.x += this.evasionFx * this.speed * delta;
+                this.y += this.evasionFy * this.speed * delta;
+            } else if (this.enemyType === 'drone') {
+                this.x += this.flockFx * this.speed * delta;
+                this.y += this.flockFy * this.speed * delta;
+            }
         }
     }
 
