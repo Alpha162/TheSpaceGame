@@ -68,8 +68,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     create(): void {
-        // Set world bounds
-        this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
 
         // Create starfield layers
         this.createStarfield();
@@ -378,10 +377,12 @@ export class GameScene extends Phaser.Scene {
             cam.zoom += diff * CAMERA_ZOOM_LERP;
         }
 
-        // Keep the focus world point under the cursor position
-        const currentWorld = cam.getWorldPoint(this.zoomFocusScreenX, this.zoomFocusScreenY);
-        cam.scrollX += this.zoomFocusWorldX - currentWorld.x;
-        cam.scrollY += this.zoomFocusWorldY - currentWorld.y;
+        // Directly compute scroll so focus world point stays at the cursor screen position.
+        // Phaser world mapping: worldX = scrollX + camWidth/2 + (screenX - camWidth/2) / zoom
+        const hw = cam.width * 0.5;
+        const hh = cam.height * 0.5;
+        cam.scrollX = this.zoomFocusWorldX - hw - (this.zoomFocusScreenX - hw) / cam.zoom;
+        cam.scrollY = this.zoomFocusWorldY - hh - (this.zoomFocusScreenY - hh) / cam.zoom;
     }
 
     private handleCameraMovement(): void {
