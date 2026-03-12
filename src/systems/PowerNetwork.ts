@@ -691,6 +691,7 @@ export class PowerNetwork {
             clusterMembers.push(this.hub);
         }
         this.shieldClusterManager.rebuild(clusterMembers);
+        this.shieldClusterManager.updateClusterTuningDecay();
         this.shieldClusterManager.updateSyncPhase(delta);
         this.shieldClusterManager.renderClusters();
         for (const shield of activeShields) {
