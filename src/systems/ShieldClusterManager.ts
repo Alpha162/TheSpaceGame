@@ -157,12 +157,24 @@ export class ShieldClusterManager {
             const prevLock = this.prevLock.get(key);
 
             // If this exact cluster existed before, keep its tuning/lock.
-            // Otherwise average member tunings (which already inherited from
-            // their old cluster via the dissolve step above).
-            const clusterTuning = prevTuning !== undefined
-                ? prevTuning
-                : members.reduce((sum, m) => sum + m.tuning, 0) / members.length;
-            const clusterManualLock = prevLock ?? false;
+            // Otherwise inherit from members: if any member is manually locked,
+            // use the average of locked members' tuning and preserve the lock.
+            // If none are locked, average all members.
+            let clusterTuning: number;
+            let clusterManualLock: boolean;
+            if (prevTuning !== undefined) {
+                clusterTuning = prevTuning;
+                clusterManualLock = prevLock ?? false;
+            } else {
+                const lockedMembers = members.filter(m => m.manualLock);
+                if (lockedMembers.length > 0) {
+                    clusterTuning = lockedMembers.reduce((sum, m) => sum + m.tuning, 0) / lockedMembers.length;
+                    clusterManualLock = true;
+                } else {
+                    clusterTuning = members.reduce((sum, m) => sum + m.tuning, 0) / members.length;
+                    clusterManualLock = false;
+                }
+            }
 
             const cluster: ShieldCluster = {
                 members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy,
