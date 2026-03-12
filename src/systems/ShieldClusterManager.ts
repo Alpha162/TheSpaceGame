@@ -44,8 +44,10 @@ export interface ShieldCluster {
 export class ShieldClusterManager {
     private clusters: ShieldCluster[] = [];
     private memberToCluster: Map<IClusterShield, ShieldCluster> = new Map();
-    /** Preserved sync phases keyed by a stable cluster fingerprint */
+    /** Preserved state keyed by a stable cluster fingerprint */
     private prevPhases: Map<string, number> = new Map();
+    private prevTuning: Map<string, number> = new Map();
+    private prevLock: Map<string, boolean> = new Map();
     private clusterGraphics: Phaser.GameObjects.Graphics | null = null;
 
     init(scene: Phaser.Scene): void {
@@ -148,17 +150,24 @@ export class ShieldClusterManager {
             cx /= members.length;
             cy /= members.length;
 
-            // Preserve sync phase from previous frame
+            // Preserve state from previous frame
             const key = this.clusterKey(members);
             const prevPhase = this.prevPhases.get(key) ?? 0;
+            const prevTuning = this.prevTuning.get(key);
+            const prevLock = this.prevLock.get(key);
 
-            // Average tuning across members for cluster tuning
-            const avgTuning = members.reduce((sum, m) => sum + m.tuning, 0) / members.length;
+            // If this exact cluster existed before, keep its tuning/lock.
+            // Otherwise average member tunings (which already inherited from
+            // their old cluster via the dissolve step above).
+            const clusterTuning = prevTuning !== undefined
+                ? prevTuning
+                : members.reduce((sum, m) => sum + m.tuning, 0) / members.length;
+            const clusterManualLock = prevLock ?? false;
 
             const cluster: ShieldCluster = {
                 members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy,
-                clusterTuning: avgTuning,
-                clusterManualLock: false,
+                clusterTuning,
+                clusterManualLock,
                 lastTuningDriftTime: 0
             };
             this.clusters.push(cluster);
@@ -171,6 +180,14 @@ export class ShieldClusterManager {
             }
         }
         this.prevPhases = newPhases;
+        // Also snapshot tuning/lock for the new cluster set
+        this.prevTuning.clear();
+        this.prevLock.clear();
+        for (const cluster of this.clusters) {
+            const key = this.clusterKey(cluster.members);
+            this.prevTuning.set(key, cluster.clusterTuning);
+            this.prevLock.set(key, cluster.clusterManualLock);
+        }
     }
 
     /** Distribute heat from a damage event across the cluster. */
@@ -218,6 +235,7 @@ export class ShieldClusterManager {
     /** Idle decay for all cluster tunings — called each frame */
     updateClusterTuningDecay(): void {
         for (const cluster of this.clusters) {
+            if (cluster.clusterManualLock) continue;
             if (cluster.clusterTuning > 0.5) {
                 cluster.clusterTuning = Math.max(0.5, cluster.clusterTuning - SHIELD_TUNE_DRIFT_DECAY);
             } else if (cluster.clusterTuning < 0.5) {
@@ -233,6 +251,8 @@ export class ShieldClusterManager {
             // Persist for next rebuild
             const key = this.clusterKey(cluster.members);
             this.prevPhases.set(key, cluster.syncPhase);
+            this.prevTuning.set(key, cluster.clusterTuning);
+            this.prevLock.set(key, cluster.clusterManualLock);
             for (const member of cluster.members) {
                 member.clusterSyncPhase = cluster.syncPhase;
             }
