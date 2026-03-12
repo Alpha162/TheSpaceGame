@@ -4,9 +4,10 @@ import {
     COMMAND_HUB_HEALTH, COMMAND_HUB_POWER_GEN, COMMAND_HUB_RADIUS,
     COMMAND_HUB_SHIELD_RADIUS, COMMAND_HUB_SHIELD_HEAT_DECAY,
     SHIELD_ABSORB_HEAT_PER_DAMAGE, SHIELD_DEPLOY_SPEED,
-    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED
+    SHIELD_TUNE_DEFAULT,
+    COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_RED
 } from '../utils/Constants';
-import { hexagonPoints } from '../utils/Helpers';
+import { hexagonPoints, getTuningVisual } from '../utils/Helpers';
 import type { Shield } from './defence/Shield';
 import type { IClusterShield, ShieldClusterManager } from '../systems/ShieldClusterManager';
 
@@ -32,6 +33,13 @@ export class CommandHub extends GameNode implements IClusterShield {
     clusterSyncPhase = 0;
     clusterCenterX = 0;
     clusterCenterY = 0;
+    /** Shield tuning (0.0 = kinetic, 0.5 = balanced, 1.0 = energy) */
+    tuning = SHIELD_TUNE_DEFAULT;
+    manualLock = false;
+    lastTuningDriftTime = 0;
+    private collapseAnimTimer = 0;
+    private collapseAnimRadius = 0;
+    private collapseAnimColour = 0x00dcff;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, COMMAND_HUB_HEALTH, 0, COMMAND_HUB_RADIUS);
@@ -60,6 +68,11 @@ export class CommandHub extends GameNode implements IClusterShield {
     getHeat(): number { return this.hubShieldHeat; }
     setHeat(value: number): void { this.hubShieldHeat = value; }
     collapseShield(): void {
+        const tuningVis = getTuningVisual(this.tuning);
+        this.collapseAnimRadius = this.hubShieldRadius;
+        this.collapseAnimColour = tuningVis.colour;
+        this.collapseAnimTimer = 200;
+
         this.hubShieldHeat = 1;
         this.hubShieldActive = false;
         this.hubShieldRadius = 0;
@@ -80,9 +93,15 @@ export class CommandHub extends GameNode implements IClusterShield {
                 this.hubShieldCooldown = 0;
                 this.hubShieldHeat = 0;
                 this.hubShieldActive = true;
+                this.tuning = SHIELD_TUNE_DEFAULT; // Reset tuning on redeploy
             }
             this.drawShieldBubble();
             return;
+        }
+
+        // Tick collapse animation
+        if (this.collapseAnimTimer > 0) {
+            this.collapseAnimTimer -= delta;
         }
 
         if (this.hubShieldActive) {
@@ -135,10 +154,17 @@ export class CommandHub extends GameNode implements IClusterShield {
         this.shieldGraphics.x = this.x;
         this.shieldGraphics.y = this.y;
 
-        if (this.hubShieldRadius <= 0) return;
+        if (this.hubShieldRadius <= 0 && this.collapseAnimTimer <= 0) return;
 
-        const colour = this.getShieldColour();
-        const alpha = 0.5;
+        // Tuning-based colour and opacity
+        const effectiveTuning = (this.inCluster && this.clusterManager)
+            ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+            : this.tuning;
+        const tuningVis = getTuningVisual(effectiveTuning);
+        const colour = this.hubShieldHeat > 0.5
+            ? this.blendColour(tuningVis.colour, COLOUR_RED, (this.hubShieldHeat - 0.5) * 2)
+            : tuningVis.colour;
+        const alpha = tuningVis.opacity;
         const membraneAlphaScale = this.inCluster ? 0.35 : 1;
         const segments = 64;
 
@@ -169,9 +195,20 @@ export class CommandHub extends GameNode implements IClusterShield {
         }
 
         // Heat glow
-        if (this.hubShieldHeat > 0.1) {
+        if (this.hubShieldHeat > 0.1 && this.hubShieldRadius > 0) {
             this.shieldGraphics.fillStyle(COLOUR_RED, this.hubShieldHeat * 0.25);
             this.shieldGraphics.fillCircle(0, 0, this.hubShieldRadius * 0.4 * this.hubShieldHeat);
+        }
+
+        // Collapse animation
+        if (this.collapseAnimTimer > 0) {
+            const t = 1 - this.collapseAnimTimer / 200;
+            const flashR = this.collapseAnimRadius * (1 + t * 0.5);
+            const flashAlpha = (1 - t) * 0.6;
+            this.shieldGraphics.lineStyle(3, this.collapseAnimColour, flashAlpha);
+            this.shieldGraphics.strokeCircle(0, 0, flashR);
+            this.shieldGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
+            this.shieldGraphics.strokeCircle(0, 0, flashR * 0.8);
         }
     }
 
@@ -251,10 +288,13 @@ export class CommandHub extends GameNode implements IClusterShield {
         }
     }
 
-    private getShieldColour(): number {
-        if (this.hubShieldHeat < 0.3) return COLOUR_CYAN;
-        if (this.hubShieldHeat < 0.7) return COLOUR_AMBER;
-        return COLOUR_RED;
+    private blendColour(a: number, b: number, f: number): number {
+        const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+        const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+        const r = Math.round(ar + (br - ar) * f);
+        const g = Math.round(ag + (bg - ag) * f);
+        const bl = Math.round(ab + (bb - ab) * f);
+        return (r << 16) | (g << 8) | bl;
     }
 
     protected drawNode(): void {

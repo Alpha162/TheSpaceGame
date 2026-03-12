@@ -5,9 +5,14 @@ import {
     SHIELD_COLLAPSE_COOLDOWN_MS, SHIELD_ABSORB_HEAT_PER_DAMAGE,
     SHIELD_RESERVE_MAX, SHIELD_RESERVE_DRAIN_RATE, SHIELD_RESERVE_FIRE_MULTIPLIER,
     SHIELD_RESERVE_CHARGE_RATE,
+    SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
+    SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_DRIFT_DECAY, SHIELD_TUNE_MANUAL_DRIFT_MULT,
+    SHIELD_TUNE_BLEEDTHROUGH_MIN, SHIELD_TUNE_BLEEDTHROUGH_MAX,
+    TUNING_DRIFT_MIN_INTERVAL_MS,
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED, COLOUR_SELECTION,
     PowerPriority
 } from '../../utils/Constants';
+import { getTuningVisual } from '../../utils/Helpers';
 import type { IClusterShield, ShieldClusterManager } from '../../systems/ShieldClusterManager';
 
 export type ShieldState = 'deploying' | 'maintaining' | 'collapsed' | 'cooldown';
@@ -32,6 +37,16 @@ export class Shield extends GameNode implements IClusterShield {
     clusterSyncPhase = 0;
     clusterCenterX = 0;
     clusterCenterY = 0;
+
+    // Shield tuning
+    tuning: number = SHIELD_TUNE_DEFAULT;
+    manualLock = false;
+    lastTuningDriftTime = 0;
+
+    // Collapse animation
+    private collapseAnimTimer = 0;
+    private collapseAnimRadius = 0;
+    private collapseAnimColour = 0x00dcff;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
@@ -75,6 +90,12 @@ export class Shield extends GameNode implements IClusterShield {
     getHeat(): number { return this.heatLevel; }
     setHeat(value: number): void { this.heatLevel = value; }
     collapseShield(): void {
+        // Capture state for collapse animation
+        const tuningVis = getTuningVisual(this.tuning);
+        this.collapseAnimRadius = this.bubbleRadius;
+        this.collapseAnimColour = tuningVis.colour;
+        this.collapseAnimTimer = 200; // 200ms collapse animation
+
         this.heatLevel = 1;
         this.shieldState = 'collapsed';
     }
@@ -139,6 +160,10 @@ export class Shield extends GameNode implements IClusterShield {
                     const decayMult = (powered ? 1 : 0.3) * this.heatDecayMultiplier;
                     this.heatLevel = Math.max(0, this.heatLevel - SHIELD_HEAT_DECAY * decayMult);
                 }
+                // Idle tuning decay (only if not in a cluster — cluster manages its own)
+                if (!this.inCluster) {
+                    this.updateTuningDecay();
+                }
                 break;
 
             case 'collapsed':
@@ -154,8 +179,16 @@ export class Shield extends GameNode implements IClusterShield {
                     this.cooldownTimer = 0;
                     this.heatLevel = 0;
                     this.shieldState = 'deploying';
+                    // Reset tuning on redeploy
+                    this.tuning = SHIELD_TUNE_DEFAULT;
+                    this.manualLock = false;
                 }
                 break;
+        }
+
+        // Tick collapse animation
+        if (this.collapseAnimTimer > 0) {
+            this.collapseAnimTimer -= delta;
         }
 
         this.drawBubble();
@@ -185,6 +218,45 @@ export class Shield extends GameNode implements IClusterShield {
         return this.shieldState === 'deploying' || this.shieldState === 'maintaining';
     }
 
+    /** Auto-drift tuning toward incoming damage type */
+    applyTuningDrift(incomingDamageType: number): void {
+        const driftRate = this.manualLock
+            ? SHIELD_TUNE_DRIFT_PER_HIT * SHIELD_TUNE_MANUAL_DRIFT_MULT
+            : SHIELD_TUNE_DRIFT_PER_HIT;
+
+        if (incomingDamageType < this.tuning) {
+            this.tuning = Math.max(SHIELD_TUNE_MIN, this.tuning - driftRate);
+        } else if (incomingDamageType > this.tuning) {
+            this.tuning = Math.min(SHIELD_TUNE_MAX, this.tuning + driftRate);
+        }
+    }
+
+    /** Idle decay: relax tuning toward 0.5 each frame */
+    updateTuningDecay(): void {
+        if (this.tuning > 0.5) {
+            this.tuning = Math.max(0.5, this.tuning - SHIELD_TUNE_DRIFT_DECAY);
+        } else if (this.tuning < 0.5) {
+            this.tuning = Math.min(0.5, this.tuning + SHIELD_TUNE_DRIFT_DECAY);
+        }
+    }
+
+    /** Calculate damage bleedthrough based on tuning vs incoming type */
+    calculateBleedthrough(incomingDamageType: number): number {
+        const mismatch = Math.abs(this.tuning - incomingDamageType);
+        return SHIELD_TUNE_BLEEDTHROUGH_MIN
+            + (SHIELD_TUNE_BLEEDTHROUGH_MAX - SHIELD_TUNE_BLEEDTHROUGH_MIN)
+            * mismatch;
+    }
+
+    setManualTuning(value: number): void {
+        this.tuning = Math.max(SHIELD_TUNE_MIN, Math.min(SHIELD_TUNE_MAX, value));
+        this.manualLock = true;
+    }
+
+    clearManualLock(): void {
+        this.manualLock = false;
+    }
+
     private drawBubble(): void {
         this.bubbleGraphics.clear();
         this.bubbleGraphics.x = this.x;
@@ -192,13 +264,23 @@ export class Shield extends GameNode implements IClusterShield {
 
         if (this.bubbleRadius <= 0) return;
 
-        // Colour shifts from cyan to amber to red based on heat
-        const baseColour = this.getShieldColour();
+        // Get effective tuning (cluster or individual)
+        const effectiveTuning = (this.inCluster && this.clusterManager)
+            ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+            : this.tuning;
+
+        // Tuning-based colour and opacity
+        const tuningVis = getTuningVisual(effectiveTuning);
+        // Blend toward red when heat is high
+        const baseColour = this.heatLevel > 0.5
+            ? this.blendColour(tuningVis.colour, COLOUR_RED, (this.heatLevel - 0.5) * 2)
+            : tuningVis.colour;
+
         const onReserve = this.nodeState !== 'online' && this.internalReserve > 0;
-        // Dim when on reserve (proportional to remaining reserve), very dim on brownout
+        const baseAlpha = tuningVis.opacity;
         const alpha = onReserve
-            ? 0.2 + 0.3 * this.internalReserve
-            : this.nodeState === 'brownout' ? 0.3 : 0.6;
+            ? baseAlpha * (0.3 + 0.7 * this.internalReserve)
+            : this.nodeState === 'brownout' ? baseAlpha * 0.5 : baseAlpha;
 
         const membraneAlphaScale = this.inCluster ? 0.3 : 1;
 
@@ -244,6 +326,18 @@ export class Shield extends GameNode implements IClusterShield {
             const heatGlowRadius = this.bubbleRadius * 0.4 * this.heatLevel;
             this.bubbleGraphics.fillStyle(COLOUR_RED, this.heatLevel * 0.3);
             this.bubbleGraphics.fillCircle(0, 0, heatGlowRadius);
+        }
+
+        // Collapse animation — expanding flash ring that fades
+        if (this.collapseAnimTimer > 0) {
+            const t = 1 - this.collapseAnimTimer / 200; // 0→1
+            const flashR = this.collapseAnimRadius * (1 + t * 0.5);
+            const flashAlpha = (1 - t) * 0.6;
+            this.bubbleGraphics.lineStyle(3, this.collapseAnimColour, flashAlpha);
+            this.bubbleGraphics.strokeCircle(0, 0, flashR);
+            // Inner bright flash
+            this.bubbleGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
+            this.bubbleGraphics.strokeCircle(0, 0, flashR * 0.8);
         }
     }
 
@@ -359,10 +453,14 @@ export class Shield extends GameNode implements IClusterShield {
         }
     }
 
-    private getShieldColour(): number {
-        if (this.heatLevel < 0.3) return COLOUR_CYAN;
-        if (this.heatLevel < 0.7) return COLOUR_AMBER;
-        return COLOUR_RED;
+    /** Linearly blend two 0xRRGGBB colours. f=0 returns a, f=1 returns b. */
+    private blendColour(a: number, b: number, f: number): number {
+        const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+        const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+        const r = Math.round(ar + (br - ar) * f);
+        const g = Math.round(ag + (bg - ag) * f);
+        const bl = Math.round(ab + (bb - ab) * f);
+        return (r << 16) | (g << 8) | bl;
     }
 
     protected drawNode(): void {

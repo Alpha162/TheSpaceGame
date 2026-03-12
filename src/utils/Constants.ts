@@ -67,6 +67,17 @@ export const SHIELD_RESERVE_FIRE_MULTIPLIER = 8;   // drains 8x faster under fir
 export const SHIELD_RESERVE_CHARGE_RATE = 0.0004;  // charge per ms (~2.5s to fill when online)
 export const SHIELD_CLUSTER_OVERLAP_MARGIN = 20;   // px of overlap forgiveness for cluster detection
 
+// Shield Tuning
+export const SHIELD_TUNE_DEFAULT = 0.5;              // balanced on deploy
+export const SHIELD_TUNE_MIN = 0.0;                  // full kinetic specialisation
+export const SHIELD_TUNE_MAX = 1.0;                  // full energy specialisation
+export const SHIELD_TUNE_DRIFT_PER_HIT = 0.03;       // auto-drift toward incoming damage type per hit
+export const SHIELD_TUNE_DRIFT_DECAY = 0.001;        // per frame, relaxes toward 0.5 when idle
+export const SHIELD_TUNE_MANUAL_DRIFT_MULT = 0.5;    // drift rate multiplier when manually locked
+export const SHIELD_TUNE_BLEEDTHROUGH_MIN = 0.15;    // best case damage passthrough (perfect tune match)
+export const SHIELD_TUNE_BLEEDTHROUGH_MAX = 0.85;    // worst case damage passthrough (full mismatch)
+export const TUNING_DRIFT_MIN_INTERVAL_MS = 200;     // beam weapons: max 5 drift applications per second
+
 // Cluster visual constants
 export const COLOUR_CLUSTER_VIOLET = 0x9966ff;
 export const CLUSTER_ARC_SEGMENTS = 24;
@@ -206,6 +217,26 @@ export const SWARM_RADIUS = 3;
 export const SWARM_REWARD = 3;
 export const SWARM_GROUP_SIZE = 4;        // spawned per "slot" in a wave
 
+// Lancer Enemy
+export const LANCER_HP = 20;
+export const LANCER_SPEED = 0.05;
+export const LANCER_BEAM_DPS = 8;
+export const LANCER_BEAM_RANGE = 170;     // Inside missile (180) and laser (200) range, outside blaster (150)
+export const LANCER_LOCK_TIME_MS = 400;
+export const LANCER_REWARD = 15;
+export const LANCER_RADIUS = 5;
+
+// Tank Enemy Shield
+export const TANK_SHIELD_RADIUS = 40;
+export const TANK_SHIELD_HEAT_DECAY = 0.002;          // Slower decay than player shields (0.003) — tougher
+export const TANK_SHIELD_HEAT_PER_DAMAGE = 0.08;      // Slightly less heat per hit than player (0.1) — tankier
+export const TANK_SHIELD_COOLDOWN_MS = 6000;           // 6 seconds to redeploy after collapse
+
+// Scout Enemy Shield
+export const SCOUT_SHIELD_RADIUS = 20;
+export const SCOUT_SHIELD_HEAT_PER_DAMAGE = 0.4;      // Very high — 2-3 hits collapses it
+export const SCOUT_SHIELD_ONE_SHOT = true;             // Shield does not regenerate after collapse
+
 // Upgrade constants
 export const UPGRADE_COST_FRACTION = 0.7; // upgrade costs 70% of original build cost
 
@@ -213,6 +244,7 @@ export const UPGRADE_COST_FRACTION = 0.7; // upgrade costs 70% of original build
 export const COLOUR_SCOUT = 0x44ff88;     // green-ish
 export const COLOUR_TANK = 0xaa44ff;      // purple
 export const COLOUR_SWARM = 0xffdd00;     // yellow
+export const COLOUR_LANCER = 0xff8800;    // amber/orange — distinct from player laser (cyan)
 
 // UI scale factor (matches devicePixelRatio for crisp rendering)
 export const UI_SCALE = window.devicePixelRatio || 1;

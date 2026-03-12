@@ -1,7 +1,8 @@
-import { distanceBetween } from '../utils/Helpers';
+import { distanceBetween, getTuningVisual } from '../utils/Helpers';
 import {
     SHIELD_CLUSTER_OVERLAP_MARGIN,
-    COLOUR_CLUSTER_VIOLET,
+    SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
+    SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_DRIFT_DECAY, SHIELD_TUNE_MANUAL_DRIFT_MULT,
     CLUSTER_ARC_SEGMENTS,
     CLUSTER_ARC_AMPLITUDE,
     CLUSTER_ARC_SPEED,
@@ -23,6 +24,10 @@ export interface IClusterShield {
     /** Barycenter of the cluster this shield belongs to */
     clusterCenterX: number;
     clusterCenterY: number;
+    /** Shield tuning (0.0 = kinetic, 0.5 = balanced, 1.0 = energy) */
+    tuning: number;
+    manualLock: boolean;
+    lastTuningDriftTime: number;
 }
 
 export interface ShieldCluster {
@@ -31,6 +36,9 @@ export interface ShieldCluster {
     syncPhase: number;
     centerX: number;
     centerY: number;
+    clusterTuning: number;
+    clusterManualLock: boolean;
+    lastTuningDriftTime: number;
 }
 
 export class ShieldClusterManager {
@@ -60,8 +68,15 @@ export class ShieldClusterManager {
     rebuild(shields: IClusterShield[]): void {
         this.memberToCluster.clear();
 
-        // Reset all shields
+        // Dissolve: shields leaving clusters inherit cluster tuning
         for (const s of shields) {
+            if (s.inCluster) {
+                const oldCluster = this.memberToCluster.get(s);
+                if (oldCluster) {
+                    s.tuning = oldCluster.clusterTuning;
+                    s.manualLock = oldCluster.clusterManualLock;
+                }
+            }
             s.inCluster = false;
         }
 
@@ -137,7 +152,15 @@ export class ShieldClusterManager {
             const key = this.clusterKey(members);
             const prevPhase = this.prevPhases.get(key) ?? 0;
 
-            const cluster: ShieldCluster = { members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy };
+            // Average tuning across members for cluster tuning
+            const avgTuning = members.reduce((sum, m) => sum + m.tuning, 0) / members.length;
+
+            const cluster: ShieldCluster = {
+                members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy,
+                clusterTuning: avgTuning,
+                clusterManualLock: false,
+                lastTuningDriftTime: 0
+            };
             this.clusters.push(cluster);
             newPhases.set(key, prevPhase);
             for (const m of members) {
@@ -179,6 +202,30 @@ export class ShieldClusterManager {
         }
     }
 
+    /** Apply tuning drift at cluster level (one drift per hit for the whole cluster) */
+    applyClusterTuningDrift(cluster: ShieldCluster, incomingDamageType: number): void {
+        const driftRate = cluster.clusterManualLock
+            ? SHIELD_TUNE_DRIFT_PER_HIT * SHIELD_TUNE_MANUAL_DRIFT_MULT
+            : SHIELD_TUNE_DRIFT_PER_HIT;
+
+        if (incomingDamageType < cluster.clusterTuning) {
+            cluster.clusterTuning = Math.max(SHIELD_TUNE_MIN, cluster.clusterTuning - driftRate);
+        } else if (incomingDamageType > cluster.clusterTuning) {
+            cluster.clusterTuning = Math.min(SHIELD_TUNE_MAX, cluster.clusterTuning + driftRate);
+        }
+    }
+
+    /** Idle decay for all cluster tunings — called each frame */
+    updateClusterTuningDecay(): void {
+        for (const cluster of this.clusters) {
+            if (cluster.clusterTuning > 0.5) {
+                cluster.clusterTuning = Math.max(0.5, cluster.clusterTuning - SHIELD_TUNE_DRIFT_DECAY);
+            } else if (cluster.clusterTuning < 0.5) {
+                cluster.clusterTuning = Math.min(0.5, cluster.clusterTuning + SHIELD_TUNE_DRIFT_DECAY);
+            }
+        }
+    }
+
     /** Advance synced ripple phase for each cluster. */
     updateSyncPhase(delta: number): void {
         for (const cluster of this.clusters) {
@@ -208,6 +255,8 @@ export class ShieldClusterManager {
     private renderClusterArcs(cluster: ShieldCluster): void {
         const g = this.clusterGraphics!;
         const amplitude = CLUSTER_ARC_AMPLITUDE * Math.sin(cluster.syncPhase * CLUSTER_ARC_SPEED);
+        const tuningVis = getTuningVisual(cluster.clusterTuning);
+        const arcColour = tuningVis.colour;
 
         for (const [a, b] of cluster.edges) {
             const dx = b.x - a.x;
@@ -229,7 +278,7 @@ export class ShieldClusterManager {
             // Draw two arcs bowing in opposite directions
             for (const sign of [1, -1]) {
                 // Glow layer
-                g.lineStyle(glowWidth, COLOUR_CLUSTER_VIOLET, glowAlpha);
+                g.lineStyle(glowWidth, arcColour, glowAlpha);
                 g.beginPath();
                 for (let i = 0; i <= CLUSTER_ARC_SEGMENTS; i++) {
                     const t = i / CLUSTER_ARC_SEGMENTS;
@@ -241,7 +290,7 @@ export class ShieldClusterManager {
                 g.strokePath();
 
                 // Inner layer
-                g.lineStyle(innerWidth, COLOUR_CLUSTER_VIOLET, innerAlpha);
+                g.lineStyle(innerWidth, arcColour, innerAlpha);
                 g.beginPath();
                 for (let i = 0; i <= CLUSTER_ARC_SEGMENTS; i++) {
                     const t = i / CLUSTER_ARC_SEGMENTS;
@@ -300,8 +349,11 @@ export class ShieldClusterManager {
         smoothed = this.chaikinSmooth(smoothed);
         smoothed = this.chaikinSmooth(smoothed);
 
+        const tuningVis = getTuningVisual(cluster.clusterTuning);
+        const membraneColour = tuningVis.colour;
+
         // Draw glow layer
-        g.lineStyle(6, COLOUR_CLUSTER_VIOLET, 0.03);
+        g.lineStyle(6, membraneColour, 0.03);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
         for (let i = 1; i < smoothed.length; i++) {
@@ -311,7 +363,7 @@ export class ShieldClusterManager {
         g.strokePath();
 
         // Draw inner membrane
-        g.lineStyle(2, COLOUR_CLUSTER_VIOLET, 0.08);
+        g.lineStyle(2, membraneColour, 0.08);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
         for (let i = 1; i < smoothed.length; i++) {

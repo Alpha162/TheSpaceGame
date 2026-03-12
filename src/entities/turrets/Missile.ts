@@ -156,11 +156,18 @@ export class Missile extends GameNode {
             }
 
             if (hit) {
-                // AoE damage
+                // AoE damage — routed through unified damage pipeline
                 for (const enemy of enemies) {
                     if (!enemy.alive) continue;
                     if (distanceBetween(m.x, m.y, enemy.x, enemy.y) <= MISSILE_AOE_RADIUS) {
-                        enemy.takeDamage(MISSILE_DAMAGE);
+                        this.combatSystem!.applyDamage(
+                            m,       // source: missile impact point
+                            enemy,   // target
+                            MISSILE_DAMAGE,
+                            0.1,     // damageType: mostly kinetic, slight energy
+                            false,   // isBeam
+                            true     // isAoE
+                        );
                     }
                 }
                 SoundManager.play('explosion');
