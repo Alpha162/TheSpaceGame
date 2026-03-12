@@ -31,6 +31,7 @@ import {
 import { CommandHub } from '../entities/CommandHub';
 import { distanceBetween } from '../utils/Helpers';
 import { SoundManager } from './SoundManager';
+import type { ShieldTuningPanel } from '../ui/ShieldTuningPanel';
 
 export type BuildableType = 'relay' | 'shield' | 'capacitor' | 'blaster' | 'laser' | 'missile' | 'miner';
 
@@ -65,6 +66,7 @@ export class BuildSystem {
     private mineralManager: MineralManager | null = null;
     private asteroids: MineralAsteroid[] = [];
     private shieldInfoText: Phaser.GameObjects.Text;
+    private shieldTuningPanel: ShieldTuningPanel | null = null;
     private suppressNextRightDrag = false;
 
     constructor(scene: Phaser.Scene, resourceManager: ResourceManager, powerNetwork: PowerNetwork) {
@@ -160,6 +162,9 @@ export class BuildSystem {
         // Spawn panel bottom-right
         if (x >= viewW - 174 * s && x <= viewW - 4 * s && y >= viewH - 70 * s && y <= viewH - 6 * s) return true;
 
+        // Shield tuning panel
+        if (this.shieldTuningPanel && this.shieldTuningPanel.isPointOverPanel(x, y)) return true;
+
         return false;
     }
 
@@ -173,6 +178,10 @@ export class BuildSystem {
 
     setAsteroids(asteroids: MineralAsteroid[]): void {
         this.asteroids = asteroids;
+    }
+
+    setShieldTuningPanel(panel: ShieldTuningPanel): void {
+        this.shieldTuningPanel = panel;
     }
 
     startBuild(type: BuildableType): void {
@@ -244,6 +253,19 @@ export class BuildSystem {
             if (dist <= node.nodeRadius + 8 && dist < closestDist) {
                 closest = node;
                 closestDist = dist;
+            }
+        }
+
+        // If no node hit by radius, check if click is inside a shield bubble
+        if (!closest) {
+            for (const node of this.placedNodes) {
+                if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
+                    const dist = distanceBetween(worldPoint.x, worldPoint.y, node.x, node.y);
+                    if (dist <= node.bubbleRadius && dist < closestDist) {
+                        closest = node;
+                        closestDist = dist;
+                    }
+                }
             }
         }
 
