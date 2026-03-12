@@ -68,9 +68,8 @@ export class ShieldClusterManager {
 
     /** Rebuild clusters from scratch using union-find on bubble overlap. */
     rebuild(shields: IClusterShield[]): void {
-        this.memberToCluster.clear();
-
         // Dissolve: shields leaving clusters inherit cluster tuning
+        // (must happen BEFORE clearing memberToCluster)
         for (const s of shields) {
             if (s.inCluster) {
                 const oldCluster = this.memberToCluster.get(s);
@@ -81,6 +80,7 @@ export class ShieldClusterManager {
             }
             s.inCluster = false;
         }
+        this.memberToCluster.clear();
 
         if (shields.length < 2) {
             this.clusters = [];
@@ -230,6 +230,10 @@ export class ShieldClusterManager {
         } else if (incomingDamageType > cluster.clusterTuning) {
             cluster.clusterTuning = Math.min(SHIELD_TUNE_MAX, cluster.clusterTuning + driftRate);
         }
+
+        // Persist so rebuild() sees the change
+        const key = this.clusterKey(cluster.members);
+        this.prevTuning.set(key, cluster.clusterTuning);
     }
 
     /** Idle decay for all cluster tunings — called each frame */
@@ -426,10 +430,16 @@ export class ShieldClusterManager {
     setClusterManualTuning(cluster: ShieldCluster, value: number): void {
         cluster.clusterTuning = Math.max(SHIELD_TUNE_MIN, Math.min(SHIELD_TUNE_MAX, value));
         cluster.clusterManualLock = true;
+        // Persist immediately so rebuild() on the next frame sees the change
+        const key = this.clusterKey(cluster.members);
+        this.prevTuning.set(key, cluster.clusterTuning);
+        this.prevLock.set(key, true);
     }
 
     /** Clear the manual lock on a cluster, allowing auto-drift to resume. */
     clearClusterManualLock(cluster: ShieldCluster): void {
         cluster.clusterManualLock = false;
+        const key = this.clusterKey(cluster.members);
+        this.prevLock.set(key, false);
     }
 }
