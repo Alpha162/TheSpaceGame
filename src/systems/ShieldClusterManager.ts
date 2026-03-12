@@ -1,9 +1,8 @@
-import { distanceBetween } from '../utils/Helpers';
+import { distanceBetween, getTuningVisual } from '../utils/Helpers';
 import {
     SHIELD_CLUSTER_OVERLAP_MARGIN,
     SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
     SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_DRIFT_DECAY, SHIELD_TUNE_MANUAL_DRIFT_MULT,
-    COLOUR_CLUSTER_VIOLET,
     CLUSTER_ARC_SEGMENTS,
     CLUSTER_ARC_AMPLITUDE,
     CLUSTER_ARC_SPEED,
@@ -256,6 +255,8 @@ export class ShieldClusterManager {
     private renderClusterArcs(cluster: ShieldCluster): void {
         const g = this.clusterGraphics!;
         const amplitude = CLUSTER_ARC_AMPLITUDE * Math.sin(cluster.syncPhase * CLUSTER_ARC_SPEED);
+        const tuningVis = getTuningVisual(cluster.clusterTuning);
+        const arcColour = tuningVis.colour;
 
         for (const [a, b] of cluster.edges) {
             const dx = b.x - a.x;
@@ -277,7 +278,7 @@ export class ShieldClusterManager {
             // Draw two arcs bowing in opposite directions
             for (const sign of [1, -1]) {
                 // Glow layer
-                g.lineStyle(glowWidth, COLOUR_CLUSTER_VIOLET, glowAlpha);
+                g.lineStyle(glowWidth, arcColour, glowAlpha);
                 g.beginPath();
                 for (let i = 0; i <= CLUSTER_ARC_SEGMENTS; i++) {
                     const t = i / CLUSTER_ARC_SEGMENTS;
@@ -289,7 +290,7 @@ export class ShieldClusterManager {
                 g.strokePath();
 
                 // Inner layer
-                g.lineStyle(innerWidth, COLOUR_CLUSTER_VIOLET, innerAlpha);
+                g.lineStyle(innerWidth, arcColour, innerAlpha);
                 g.beginPath();
                 for (let i = 0; i <= CLUSTER_ARC_SEGMENTS; i++) {
                     const t = i / CLUSTER_ARC_SEGMENTS;
@@ -348,8 +349,11 @@ export class ShieldClusterManager {
         smoothed = this.chaikinSmooth(smoothed);
         smoothed = this.chaikinSmooth(smoothed);
 
+        const tuningVis = getTuningVisual(cluster.clusterTuning);
+        const membraneColour = tuningVis.colour;
+
         // Draw glow layer
-        g.lineStyle(6, COLOUR_CLUSTER_VIOLET, 0.03);
+        g.lineStyle(6, membraneColour, 0.03);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
         for (let i = 1; i < smoothed.length; i++) {
@@ -359,7 +363,7 @@ export class ShieldClusterManager {
         g.strokePath();
 
         // Draw inner membrane
-        g.lineStyle(2, COLOUR_CLUSTER_VIOLET, 0.08);
+        g.lineStyle(2, membraneColour, 0.08);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
         for (let i = 1; i < smoothed.length; i++) {

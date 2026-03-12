@@ -13,9 +13,10 @@ import {
     SHIELD_TUNE_DRIFT_PER_HIT,
     SHIELD_TUNE_BLEEDTHROUGH_MIN, SHIELD_TUNE_BLEEDTHROUGH_MAX,
     TUNING_DRIFT_MIN_INTERVAL_MS,
-    COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_CYAN,
+    COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER,
     COLOUR_SCOUT, COLOUR_TANK, COLOUR_SWARM, COLOUR_LANCER
 } from '../utils/Constants';
+import { getTuningVisual } from '../utils/Helpers';
 import type { CombatSystem } from '../systems/CombatSystem';
 import type { GameNode } from './Node';
 
@@ -122,6 +123,9 @@ export class Enemy {
     /** Shield tuning (0.0 = kinetic, 0.5 = balanced, 1.0 = energy) */
     shieldTuning = SHIELD_TUNE_DEFAULT;
     private shieldLastDriftTime = 0;
+    private shieldCollapseAnimTimer = 0;
+    private shieldCollapseAnimRadius = 0;
+    private shieldCollapseAnimColour = 0x00dcff;
 
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number, type: EnemyType = 'drone') {
         const config = ENEMY_CONFIGS[type];
@@ -248,6 +252,11 @@ export class Enemy {
     }
 
     private collapseEnemyShield(): void {
+        const tuningVis = getTuningVisual(this.shieldTuning);
+        this.shieldCollapseAnimRadius = this.shieldRadius;
+        this.shieldCollapseAnimColour = tuningVis.colour;
+        this.shieldCollapseAnimTimer = 200;
+
         this.shieldHeat = 1;
         this.shieldActive = false;
 
@@ -277,6 +286,10 @@ export class Enemy {
                 this.shieldActive = true;
                 this.shieldTuning = SHIELD_TUNE_DEFAULT; // Reset tuning on redeploy
             }
+        }
+
+        if (this.shieldCollapseAnimTimer > 0) {
+            this.shieldCollapseAnimTimer -= delta;
         }
 
         this.drawEnemyShield();
@@ -836,13 +849,25 @@ export class Enemy {
         this.shieldGraphics.x = this.x;
         this.shieldGraphics.y = this.y;
 
+        // Collapse animation (renders even when shield is down)
+        if (this.shieldCollapseAnimTimer > 0) {
+            const t = 1 - this.shieldCollapseAnimTimer / 200;
+            const flashR = this.shieldCollapseAnimRadius * (1 + t * 0.5);
+            const flashAlpha = (1 - t) * 0.6;
+            this.shieldGraphics.lineStyle(3, this.shieldCollapseAnimColour, flashAlpha);
+            this.shieldGraphics.strokeCircle(0, 0, flashR);
+            this.shieldGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
+            this.shieldGraphics.strokeCircle(0, 0, flashR * 0.8);
+        }
+
         if (!this.shieldActive || this.shieldRadius <= 0) return;
 
-        // Shield colour: cyan at baseline (tuning 0.5, balanced)
-        // Until Phase 5 tuning visuals, use cyan with heat-based colour shift
-        const colour = this.shieldHeat < 0.3 ? COLOUR_CYAN :
-            this.shieldHeat < 0.7 ? COLOUR_AMBER : COLOUR_RED;
-        const alpha = 0.3;
+        // Tuning-based colour and opacity
+        const tuningVis = getTuningVisual(this.shieldTuning);
+        const colour = this.shieldHeat > 0.5
+            ? this.blendColour(tuningVis.colour, COLOUR_RED, (this.shieldHeat - 0.5) * 2)
+            : tuningVis.colour;
+        const alpha = tuningVis.opacity;
 
         // Outer glow
         this.shieldGraphics.lineStyle(2, colour, alpha * 0.3);
@@ -858,6 +883,15 @@ export class Enemy {
             this.shieldGraphics.fillStyle(COLOUR_RED, this.shieldHeat * 0.2);
             this.shieldGraphics.fillCircle(0, 0, heatGlowRadius);
         }
+    }
+
+    private blendColour(a: number, b: number, f: number): number {
+        const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+        const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+        const r = Math.round(ar + (br - ar) * f);
+        const g = Math.round(ag + (bg - ag) * f);
+        const bl = Math.round(ab + (bb - ab) * f);
+        return (r << 16) | (g << 8) | bl;
     }
 
     destroy(): void {
