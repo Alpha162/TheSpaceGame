@@ -86,10 +86,17 @@ export class Laser extends GameNode {
                 }
             }
 
-            if (this.isLocked) {
-                // Deal continuous damage
+            if (this.isLocked && this.combatSystem) {
+                // Deal continuous damage through unified pipeline
                 const dmg = LASER_DPS * (delta / 1000);
-                this.currentTarget.takeDamage(dmg);
+                this.combatSystem.applyDamage(
+                    this,                    // source: the laser turret
+                    this.currentTarget,      // target: the enemy
+                    dmg,                     // damage amount
+                    1.0,                     // damageType: pure energy
+                    true,                    // isBeam
+                    false                    // isAoE
+                );
 
                 // Check if target died
                 if (!this.currentTarget.alive) {

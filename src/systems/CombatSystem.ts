@@ -22,9 +22,16 @@ interface Projectile {
     vx: number;
     vy: number;
     damage: number;
+    damageType: number;  // 0.0 = kinetic, 1.0 = energy
     life: number;
     friendly: boolean; // true = player (hits enemies), false = enemy (hits nodes)
     graphics: Phaser.GameObjects.Graphics;
+}
+
+/** Entity-like reference for applyDamage source/target */
+interface DamageEntity {
+    x: number;
+    y: number;
 }
 
 export class CombatSystem {
@@ -111,8 +118,131 @@ export class CombatSystem {
         }
     }
 
+    /**
+     * Unified damage pipeline. ALL damage flows through this method.
+     * Until Phase 5 (shield tuning), bleedthrough = 1.0 — shields absorb full damage as heat.
+     */
+    applyDamage(
+        source: DamageEntity,
+        target: DamageEntity,
+        damage: number,
+        damageType: number,
+        isBeam: boolean = false,
+        isAoE: boolean = false
+    ): void {
+        // Determine direction: is this player → enemy or enemy → player?
+        const targetIsEnemy = target instanceof Enemy;
+
+        if (targetIsEnemy) {
+            // Player weapon → enemy: currently no enemy shields (Phase 4), direct hit
+            const enemy = target as Enemy;
+            enemy.takeDamage(damage);
+            SoundManager.play('hit');
+        } else {
+            // Enemy weapon → player node: check player shields first
+            const hub = this.powerNetwork.getHub();
+            if (!hub) return;
+
+            const allNodes: GameNode[] = [hub, ...this.buildSystem.getPlacedNodes()];
+            const activeShields: Shield[] = [];
+            for (const node of this.powerNetwork.getAllNodes()) {
+                if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
+                    activeShields.push(node);
+                }
+            }
+
+            // For beams, use ray-cast to find intercepting shield
+            if (isBeam) {
+                // Check hub shield first
+                if (hub.isHubShieldUp()) {
+                    const intersects = this.lineIntersectsCircle(
+                        source.x, source.y, target.x, target.y,
+                        hub.x, hub.y, hub.hubShieldRadius
+                    );
+                    if (intersects) {
+                        hub.absorbShieldDamage(damage);
+                        SoundManager.play('shieldHit');
+                        return; // Shield absorbed the beam
+                    }
+                }
+
+                // Check player-built shields
+                const interceptingShield = this.checkBeamShieldIntersection(
+                    { x: source.x, y: source.y },
+                    { x: target.x, y: target.y },
+                    activeShields
+                );
+                if (interceptingShield) {
+                    interceptingShield.absorbDamage(damage);
+                    SoundManager.play('shieldHit');
+                    return; // Shield absorbed the beam
+                }
+            }
+
+            // No shield intercepted (or not a beam — projectile shields handled separately)
+            // Apply damage directly to target
+            const node = target as GameNode;
+            const died = node.takeDamage(damage);
+            SoundManager.play('hit');
+            if (died) {
+                this.handleNodeDeath(node);
+            }
+        }
+    }
+
+    /**
+     * Ray-cast from beam origin to beam target, checking for shield bubble intersections.
+     * Returns the first (closest to beamOrigin) intersecting shield, or null.
+     */
+    checkBeamShieldIntersection(
+        beamOrigin: { x: number; y: number },
+        beamTarget: { x: number; y: number },
+        shields: Shield[]
+    ): Shield | null {
+        let closestShield: Shield | null = null;
+        let closestT = Infinity;
+
+        for (const shield of shields) {
+            if (!shield.isShieldActive() || shield.bubbleRadius <= 0) continue;
+
+            // Calculate closest point on line segment to shield centre
+            const dx = beamTarget.x - beamOrigin.x;
+            const dy = beamTarget.y - beamOrigin.y;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq < 0.001) continue;
+
+            const fx = beamOrigin.x - shield.x;
+            const fy = beamOrigin.y - shield.y;
+
+            // Parametric intersection: solve quadratic for line-circle intersection
+            const a = lenSq;
+            const b = 2 * (fx * dx + fy * dy);
+            const c = fx * fx + fy * fy - shield.bubbleRadius * shield.bubbleRadius;
+            const disc = b * b - 4 * a * c;
+
+            if (disc < 0) continue;
+
+            const sqrtDisc = Math.sqrt(disc);
+            const t1 = (-b - sqrtDisc) / (2 * a);
+            const t2 = (-b + sqrtDisc) / (2 * a);
+
+            // Find earliest intersection point within segment [0, 1]
+            let t = Infinity;
+            if (t1 >= 0 && t1 <= 1) t = t1;
+            else if (t2 >= 0 && t2 <= 1) t = t2;
+            else continue;
+
+            if (t < closestT) {
+                closestT = t;
+                closestShield = shield;
+            }
+        }
+
+        return closestShield;
+    }
+
     /** Fire a friendly projectile from (sx,sy) toward enemy */
-    fireProjectile(sx: number, sy: number, target: Enemy, damage: number, speed: number): void {
+    fireProjectile(sx: number, sy: number, target: Enemy, damage: number, speed: number, damageType: number = 0.0): void {
         const dx = target.x - sx;
         const dy = target.y - sy;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -124,14 +254,14 @@ export class CombatSystem {
             x: sx, y: sy,
             vx: (dx / dist) * speed,
             vy: (dy / dist) * speed,
-            damage, life: 2000,
+            damage, damageType, life: 2000,
             friendly: true,
             graphics: gfx
         });
     }
 
     /** Fire an enemy projectile toward a node */
-    private fireEnemyProjectile(sx: number, sy: number, target: GameNode, damage: number): void {
+    private fireEnemyProjectile(sx: number, sy: number, target: GameNode, damage: number, damageType: number = 0.0): void {
         const dx = target.x - sx;
         const dy = target.y - sy;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -143,7 +273,7 @@ export class CombatSystem {
             x: sx, y: sy,
             vx: (dx / dist) * ENEMY_PROJECTILE_SPEED,
             vy: (dy / dist) * ENEMY_PROJECTILE_SPEED,
-            damage, life: 3000,
+            damage, damageType, life: 3000,
             friendly: false,
             graphics: gfx
         });
@@ -384,14 +514,12 @@ export class CombatSystem {
             let hit = false;
 
             if (p.friendly) {
-                // Friendly projectile — hits enemies
+                // Friendly projectile — hits enemies (future: check enemy shields first)
                 for (const enemy of this.enemies) {
                     if (!enemy.alive) continue;
                     const dist = distanceBetween(p.x, p.y, enemy.x, enemy.y);
                     if (dist <= enemy.radius + 3) {
-                        enemy.takeDamage(p.damage);
-                        SoundManager.play('hit');
-                        // Reward handled in enemy cleanup loop above
+                        this.applyDamage(p, enemy, p.damage, p.damageType, false, false);
                         hit = true;
                         break;
                     }
