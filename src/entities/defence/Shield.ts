@@ -486,7 +486,8 @@ export class Shield extends GameNode implements IClusterShield {
 
         // Shield icon — arc segments
         if (!isConstructing) {
-            const iconColour = this.isShieldActive() ? this.getShieldColour() : colour;
+            const tuningVis = getTuningVisual(this.tuning);
+            const iconColour = this.isShieldActive() ? tuningVis.colour : colour;
             this.graphics.lineStyle(1.5, iconColour, alpha * 0.9);
             // Draw a small shield shape: dome arc + base
             this.graphics.beginPath();
