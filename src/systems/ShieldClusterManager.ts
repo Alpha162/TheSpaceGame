@@ -467,7 +467,14 @@ export class ShieldClusterManager {
         // Use a custom rendering approach: generate hex grid at cluster centre,
         // but only draw cells that fall inside at least one member shield circle.
         // This creates the unified armour shell look.
-        const cellSize = (maxExtent * 2) / 9;
+        // Cell size must match individual shield proportions (radius * 2 / 9),
+        // so use the largest member radius — NOT maxExtent which includes spacing.
+        let maxMemberRadius = 0;
+        for (const m of cluster.members) {
+            const r = m.getShieldRadius();
+            if (r > maxMemberRadius) maxMemberRadius = r;
+        }
+        const cellSize = (maxMemberRadius * 2) / 9;
         const halfCell = cellSize * 0.55;
 
         // Generate hex grid centred at origin
