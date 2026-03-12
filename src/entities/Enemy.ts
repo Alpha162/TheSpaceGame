@@ -5,11 +5,17 @@ import {
     SCOUT_HEALTH, SCOUT_SPEED, SCOUT_DAMAGE, SCOUT_RADIUS, SCOUT_REWARD,
     TANK_HEALTH, TANK_SPEED, TANK_DAMAGE, TANK_RADIUS, TANK_REWARD,
     SWARM_HEALTH, SWARM_SPEED, SWARM_DAMAGE, SWARM_RADIUS, SWARM_REWARD,
+    LANCER_HP, LANCER_SPEED, LANCER_BEAM_DPS, LANCER_BEAM_RANGE,
+    LANCER_LOCK_TIME_MS, LANCER_REWARD, LANCER_RADIUS,
     COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER,
-    COLOUR_SCOUT, COLOUR_TANK, COLOUR_SWARM
+    COLOUR_SCOUT, COLOUR_TANK, COLOUR_SWARM, COLOUR_LANCER
 } from '../utils/Constants';
+import type { CombatSystem } from '../systems/CombatSystem';
+import type { GameNode } from './Node';
 
-export type EnemyType = 'drone' | 'scout' | 'tank' | 'swarm';
+export type EnemyType = 'drone' | 'scout' | 'tank' | 'swarm' | 'lancer';
+
+export type LancerState = 'approach' | 'position' | 'lock' | 'fire';
 
 export interface EnemyConfig {
     health: number;
@@ -42,6 +48,11 @@ export const ENEMY_CONFIGS: Record<EnemyType, EnemyConfig> = {
         health: SWARM_HEALTH, speed: SWARM_SPEED, damage: SWARM_DAMAGE,
         radius: SWARM_RADIUS, reward: SWARM_REWARD,
         colour: COLOUR_SWARM, attackCooldown: 1000, attackRange: 60
+    },
+    lancer: {
+        health: LANCER_HP, speed: LANCER_SPEED, damage: LANCER_BEAM_DPS,
+        radius: LANCER_RADIUS, reward: LANCER_REWARD,
+        colour: COLOUR_LANCER, attackCooldown: 0, attackRange: LANCER_BEAM_RANGE
     }
 };
 
@@ -83,6 +94,14 @@ export class Enemy {
     private flockFx = 0;
     private flockFy = 0;
 
+    // Lancer-specific state
+    private lancerState: LancerState = 'approach';
+    private lancerLockTimer = 0;
+    private lancerBeamGraphics: Phaser.GameObjects.Graphics | null = null;
+    private lancerBeamPulse = 0;
+    private lancerTarget: GameNode | null = null;
+    private combatSystem: CombatSystem | null = null;
+
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number, type: EnemyType = 'drone') {
         const config = ENEMY_CONFIGS[type];
         this.enemyType = type;
@@ -103,6 +122,12 @@ export class Enemy {
 
         this.graphics = scene.add.graphics();
         this.graphics.setDepth(5);
+
+        if (type === 'lancer') {
+            this.lancerBeamGraphics = scene.add.graphics();
+            this.lancerBeamGraphics.setDepth(7);
+        }
+
         this.draw();
     }
 
@@ -114,6 +139,23 @@ export class Enemy {
         this.targetX = x;
         this.targetY = y;
     }
+
+    setCombatSystem(cs: CombatSystem): void {
+        this.combatSystem = cs;
+    }
+
+    /** Set the Lancer's current beam target node (called by CombatSystem) */
+    setLancerTarget(target: GameNode | null): void {
+        if (this.enemyType !== 'lancer') return;
+        if (target !== this.lancerTarget) {
+            this.lancerTarget = target;
+            this.lancerState = 'approach';
+            this.lancerLockTimer = 0;
+        }
+    }
+
+    getLancerState(): LancerState { return this.lancerState; }
+    isLancerFiring(): boolean { return this.enemyType === 'lancer' && this.lancerState === 'fire'; }
 
     /** Scout evasion: dodge incoming friendly projectiles */
     computeScoutEvasion(projectiles: ProjectileInfo[]): void {
@@ -242,6 +284,24 @@ export class Enemy {
         const dx = this.targetX - this.x;
         const dy = this.targetY - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (this.enemyType === 'lancer') {
+            this.updateLancer(delta, dx, dy, dist);
+        } else {
+            this.updateStandardMovement(delta, dx, dy, dist);
+        }
+
+        this.blockedByShield = false;
+        this.moveClamp = Infinity;
+
+        if (this.attackCooldown > 0) {
+            this.attackCooldown -= delta;
+        }
+
+        this.draw();
+    }
+
+    private updateStandardMovement(delta: number, dx: number, dy: number, dist: number): void {
         const orbitRadius = this.attackRange * 0.85;
 
         if (dist > this.attackRange && !this.blockedByShield) {
@@ -285,15 +345,175 @@ export class Enemy {
             this.x += this.flockFx * this.speed * delta;
             this.y += this.flockFy * this.speed * delta;
         }
+    }
 
-        this.blockedByShield = false;
-        this.moveClamp = Infinity;
+    /** Lancer-specific movement and beam state machine */
+    private updateLancer(delta: number, dx: number, dy: number, dist: number): void {
+        if (this.lancerBeamGraphics) this.lancerBeamGraphics.clear();
+        this.lancerBeamPulse += delta * 0.005;
 
-        if (this.attackCooldown > 0) {
-            this.attackCooldown -= delta;
+        if (!this.lancerTarget || this.lancerTarget.currentHealth <= 0) {
+            this.lancerState = 'approach';
+            this.lancerLockTimer = 0;
+            // Just move toward target position
+            if (dist > 1 && !this.blockedByShield) {
+                let moveAmount = this.speed * delta;
+                if (this.moveClamp < Infinity) {
+                    moveAmount = Math.min(moveAmount, Math.max(0, this.moveClamp));
+                }
+                if (moveAmount > 0) {
+                    this.x += (dx / dist) * moveAmount;
+                    this.y += (dy / dist) * moveAmount;
+                }
+            }
+            return;
         }
 
-        this.draw();
+        // Distance to actual target node
+        const tdx = this.lancerTarget.x - this.x;
+        const tdy = this.lancerTarget.y - this.y;
+        const targetDist = Math.sqrt(tdx * tdx + tdy * tdy);
+
+        switch (this.lancerState) {
+            case 'approach':
+                // Move toward target, stop when within beam range
+                if (targetDist > LANCER_BEAM_RANGE && !this.blockedByShield) {
+                    let moveAmount = this.speed * delta;
+                    if (this.moveClamp < Infinity) {
+                        moveAmount = Math.min(moveAmount, Math.max(0, this.moveClamp));
+                    }
+                    if (moveAmount > 0 && targetDist > 0) {
+                        this.x += (tdx / targetDist) * moveAmount;
+                        this.y += (tdy / targetDist) * moveAmount;
+                    }
+                } else {
+                    this.lancerState = 'position';
+                }
+                break;
+
+            case 'position':
+                // Hold at max beam range — maintain distance
+                if (targetDist > 0) {
+                    const idealDist = LANCER_BEAM_RANGE * 0.95;
+                    const radialError = targetDist - idealDist;
+                    if (Math.abs(radialError) > 5 && !this.blockedByShield) {
+                        const moveAmount = Math.min(
+                            Math.abs(radialError),
+                            this.speed * delta
+                        );
+                        const dir = radialError > 0 ? 1 : -1;
+                        this.x += (tdx / targetDist) * moveAmount * dir;
+                        this.y += (tdy / targetDist) * moveAmount * dir;
+                    }
+                }
+                this.lancerState = 'lock';
+                this.lancerLockTimer = 0;
+                break;
+
+            case 'lock':
+                // Aim at target for lock time, draw charge-up visual
+                this.lancerLockTimer += delta;
+
+                // Hold position at range
+                if (targetDist > 0 && !this.blockedByShield) {
+                    const idealDist = LANCER_BEAM_RANGE * 0.95;
+                    const radialError = targetDist - idealDist;
+                    if (Math.abs(radialError) > 5) {
+                        const moveAmount = Math.min(Math.abs(radialError), this.speed * delta);
+                        const dir = radialError > 0 ? 1 : -1;
+                        this.x += (tdx / targetDist) * moveAmount * dir;
+                        this.y += (tdy / targetDist) * moveAmount * dir;
+                    }
+                }
+
+                // Draw lock-on indicator
+                if (this.lancerBeamGraphics) {
+                    const lockPct = this.lancerLockTimer / LANCER_LOCK_TIME_MS;
+                    // Charge-up glow on the Lancer
+                    this.lancerBeamGraphics.fillStyle(COLOUR_LANCER, lockPct * 0.4);
+                    this.lancerBeamGraphics.fillCircle(this.x, this.y, this.radius + 3 + lockPct * 3);
+                    // Faint targeting line
+                    this.lancerBeamGraphics.lineStyle(1, COLOUR_LANCER, 0.1 + lockPct * 0.2);
+                    this.lancerBeamGraphics.beginPath();
+                    this.lancerBeamGraphics.moveTo(this.x, this.y);
+                    this.lancerBeamGraphics.lineTo(this.lancerTarget.x, this.lancerTarget.y);
+                    this.lancerBeamGraphics.strokePath();
+                }
+
+                if (this.lancerLockTimer >= LANCER_LOCK_TIME_MS) {
+                    this.lancerState = 'fire';
+                }
+
+                // If target dies during lock, reset
+                if (this.lancerTarget.currentHealth <= 0) {
+                    this.lancerState = 'approach';
+                    this.lancerLockTimer = 0;
+                }
+                break;
+
+            case 'fire':
+                // Continuous beam dealing LANCER_BEAM_DPS per second
+                if (this.combatSystem && this.lancerTarget && this.lancerTarget.currentHealth > 0) {
+                    const dmg = LANCER_BEAM_DPS * (delta / 1000);
+                    this.combatSystem.applyDamage(
+                        this,                // source: the Lancer
+                        this.lancerTarget,   // target: the player node
+                        dmg,
+                        1.0,                 // damageType: pure energy
+                        true,                // isBeam
+                        false                // isAoE
+                    );
+
+                    // Hold position
+                    if (targetDist > 0 && !this.blockedByShield) {
+                        const idealDist = LANCER_BEAM_RANGE * 0.95;
+                        const radialError = targetDist - idealDist;
+                        if (Math.abs(radialError) > 5) {
+                            const moveAmount = Math.min(Math.abs(radialError), this.speed * delta);
+                            const dir = radialError > 0 ? 1 : -1;
+                            this.x += (tdx / targetDist) * moveAmount * dir;
+                            this.y += (tdy / targetDist) * moveAmount * dir;
+                        }
+                    }
+
+                    // Draw beam
+                    this.drawLancerBeam();
+                }
+
+                // If target dies or moves out of range, reset
+                if (!this.lancerTarget || this.lancerTarget.currentHealth <= 0 || targetDist > LANCER_BEAM_RANGE * 1.2) {
+                    this.lancerState = 'approach';
+                    this.lancerLockTimer = 0;
+                }
+                break;
+        }
+    }
+
+    /** Draw the Lancer's firing beam */
+    private drawLancerBeam(): void {
+        if (!this.lancerBeamGraphics || !this.lancerTarget) return;
+
+        const tx = this.lancerTarget.x;
+        const ty = this.lancerTarget.y;
+        const pulse = 0.6 + Math.sin(this.lancerBeamPulse) * 0.3;
+
+        // Core beam — amber/orange
+        this.lancerBeamGraphics.lineStyle(2, COLOUR_LANCER, pulse);
+        this.lancerBeamGraphics.beginPath();
+        this.lancerBeamGraphics.moveTo(this.x, this.y);
+        this.lancerBeamGraphics.lineTo(tx, ty);
+        this.lancerBeamGraphics.strokePath();
+
+        // Glow
+        this.lancerBeamGraphics.lineStyle(6, COLOUR_LANCER, pulse * 0.12);
+        this.lancerBeamGraphics.beginPath();
+        this.lancerBeamGraphics.moveTo(this.x, this.y);
+        this.lancerBeamGraphics.lineTo(tx, ty);
+        this.lancerBeamGraphics.strokePath();
+
+        // Impact glow at target
+        this.lancerBeamGraphics.fillStyle(COLOUR_LANCER, pulse * 0.35);
+        this.lancerBeamGraphics.fillCircle(tx, ty, 5);
     }
 
     canAttack(): boolean {
@@ -335,6 +555,9 @@ export class Enemy {
                 break;
             case 'swarm':
                 this.drawSwarm(angle, healthPct);
+                break;
+            case 'lancer':
+                this.drawLancerBody(angle, healthPct);
                 break;
             default:
                 this.drawDrone(angle, healthPct);
@@ -441,7 +664,48 @@ export class Enemy {
         this.graphics.strokePath();
     }
 
+    private drawLancerBody(angle: number, _healthPct: number): void {
+        // Elongated, angular "sniper" profile — diamond/chevron shape
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const r = this.radius;
+
+        // Long front tip
+        const tipX = cos * (r + 5);
+        const tipY = sin * (r + 5);
+        // Side points — narrow
+        const lx = cos * (-r * 0.3) - sin * r * 0.5;
+        const ly = sin * (-r * 0.3) + cos * r * 0.5;
+        const rx = cos * (-r * 0.3) + sin * r * 0.5;
+        const ry = sin * (-r * 0.3) - cos * r * 0.5;
+        // Rear point — extended tail
+        const tailX = cos * (-r - 2);
+        const tailY = sin * (-r - 2);
+
+        // Fill
+        this.graphics.fillStyle(COLOUR_DARK_METAL, 0.85);
+        this.graphics.fillTriangle(tipX, tipY, lx, ly, tailX, tailY);
+        this.graphics.fillTriangle(tipX, tipY, rx, ry, tailX, tailY);
+
+        // Outline
+        this.graphics.lineStyle(1, this.colour, 0.9);
+        this.graphics.beginPath();
+        this.graphics.moveTo(tipX, tipY);
+        this.graphics.lineTo(lx, ly);
+        this.graphics.lineTo(tailX, tailY);
+        this.graphics.lineTo(rx, ry);
+        this.graphics.closePath();
+        this.graphics.strokePath();
+
+        // Center energy core — glows when locking/firing
+        const coreAlpha = this.lancerState === 'fire' ? 0.9 :
+            this.lancerState === 'lock' ? 0.4 + (this.lancerLockTimer / LANCER_LOCK_TIME_MS) * 0.5 : 0.3;
+        this.graphics.fillStyle(this.colour, coreAlpha);
+        this.graphics.fillCircle(0, 0, 2);
+    }
+
     destroy(): void {
+        if (this.lancerBeamGraphics) this.lancerBeamGraphics.destroy();
         this.graphics.destroy();
     }
 }

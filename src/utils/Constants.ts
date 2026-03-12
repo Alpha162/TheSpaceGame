@@ -206,6 +206,15 @@ export const SWARM_RADIUS = 3;
 export const SWARM_REWARD = 3;
 export const SWARM_GROUP_SIZE = 4;        // spawned per "slot" in a wave
 
+// Lancer Enemy
+export const LANCER_HP = 20;
+export const LANCER_SPEED = 0.05;
+export const LANCER_BEAM_DPS = 8;
+export const LANCER_BEAM_RANGE = 170;     // Inside missile (180) and laser (200) range, outside blaster (150)
+export const LANCER_LOCK_TIME_MS = 400;
+export const LANCER_REWARD = 15;
+export const LANCER_RADIUS = 5;
+
 // Upgrade constants
 export const UPGRADE_COST_FRACTION = 0.7; // upgrade costs 70% of original build cost
 
@@ -213,6 +222,7 @@ export const UPGRADE_COST_FRACTION = 0.7; // upgrade costs 70% of original build
 export const COLOUR_SCOUT = 0x44ff88;     // green-ish
 export const COLOUR_TANK = 0xaa44ff;      // purple
 export const COLOUR_SWARM = 0xffdd00;     // yellow
+export const COLOUR_LANCER = 0xff8800;    // amber/orange — distinct from player laser (cyan)
 
 // UI scale factor (matches devicePixelRatio for crisp rendering)
 export const UI_SCALE = window.devicePixelRatio || 1;

@@ -68,8 +68,8 @@ export class CombatSystem {
         if (!hub) return;
         SoundManager.play('waveSpawn');
 
-        const types: EnemyType[] = ['drone', 'scout', 'tank', 'swarm'];
-        const weights = [0.4, 0.25, 0.15, 0.2];
+        const types: EnemyType[] = ['drone', 'scout', 'tank', 'swarm', 'lancer'];
+        const weights = [0.35, 0.22, 0.15, 0.18, 0.10];
 
         for (let i = 0; i < count; i++) {
             const type = this.weightedRandom(types, weights);
@@ -90,6 +90,16 @@ export class CombatSystem {
                     const sx = x + (Math.random() - 0.5) * 30;
                     const sy = y + (Math.random() - 0.5) * 30;
                     this.enemies.push(new Enemy(this.scene, sx, sy, hub.x, hub.y, 'drone'));
+                }
+            } else if (type === 'lancer') {
+                // Lancers spawn in small numbers (1-2), specialists not fodder
+                const groupSize = 1 + (Math.random() < 0.3 ? 1 : 0);
+                for (let j = 0; j < groupSize; j++) {
+                    const sx = x + (Math.random() - 0.5) * 15;
+                    const sy = y + (Math.random() - 0.5) * 15;
+                    const lancer = new Enemy(this.scene, sx, sy, hub.x, hub.y, 'lancer');
+                    lancer.setCombatSystem(this);
+                    this.enemies.push(lancer);
                 }
             } else {
                 this.enemies.push(new Enemy(this.scene, x, y, hub.x, hub.y, type));
@@ -460,6 +470,9 @@ export class CombatSystem {
                 enemy.computeScoutEvasion(friendlyProjectiles);
             } else if (enemy.enemyType === 'drone') {
                 enemy.computeDroneFlocking(drones, friendlyProjectiles);
+            } else if (enemy.enemyType === 'lancer') {
+                // Lancers need the target node reference for beam attacks
+                enemy.setLancerTarget(attackTarget);
             }
 
             enemy.update(delta);
@@ -488,7 +501,8 @@ export class CombatSystem {
                     attackDist = Math.max(0, attackDist - hub.hubShieldRadius);
                 }
             }
-            if (enemy.canAttack() && attackTarget && attackDist <= enemy.getAttackRange() + enemy.radius) {
+            // Lancers fire beams (handled in their own update), not projectiles
+            if (enemy.enemyType !== 'lancer' && enemy.canAttack() && attackTarget && attackDist <= enemy.getAttackRange() + enemy.radius) {
                 const damage = enemy.performAttack();
                 this.fireEnemyProjectile(enemy.x, enemy.y, attackTarget, damage);
             }
