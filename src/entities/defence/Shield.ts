@@ -8,12 +8,17 @@ import {
     SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
     SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_DRIFT_DECAY, SHIELD_TUNE_MANUAL_DRIFT_MULT,
     SHIELD_TUNE_BLEEDTHROUGH_MIN, SHIELD_TUNE_BLEEDTHROUGH_MAX,
-    TUNING_DRIFT_MIN_INTERVAL_MS,
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED, COLOUR_SELECTION,
     PowerPriority
 } from '../../utils/Constants';
 import { getTuningVisual } from '../../utils/Helpers';
 import type { IClusterShield, ShieldClusterManager } from '../../systems/ShieldClusterManager';
+import {
+    createShieldEffectState, releaseShieldEffectState, updateShieldEffects,
+    renderShieldEffects, getBreathingOffset, getEffectiveColour,
+    triggerImpact, triggerCollapse, setClusterBudget,
+    type ShieldEffectState
+} from '../../rendering/ShieldEffects';
 
 export type ShieldState = 'deploying' | 'maintaining' | 'collapsed' | 'cooldown';
 
@@ -48,6 +53,9 @@ export class Shield extends GameNode implements IClusterShield {
     private collapseAnimRadius = 0;
     private collapseAnimColour = 0x00dcff;
 
+    // Visual effects state
+    effectState: ShieldEffectState;
+
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
         this.powerPriority = PowerPriority.CRITICAL;
@@ -55,6 +63,8 @@ export class Shield extends GameNode implements IClusterShield {
         // Separate graphics layer for bubble so it renders behind/around other nodes
         this.bubbleGraphics = scene.add.graphics();
         this.bubbleGraphics.setDepth(-2);
+
+        this.effectState = createShieldEffectState(false);
 
         this.drawNode();
     }
@@ -91,10 +101,16 @@ export class Shield extends GameNode implements IClusterShield {
     setHeat(value: number): void { this.heatLevel = value; }
     collapseShield(): void {
         // Capture state for collapse animation
-        const tuningVis = getTuningVisual(this.tuning);
+        const effectiveTuning = (this.inCluster && this.clusterManager)
+            ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+            : this.tuning;
+        const tuningVis = getTuningVisual(effectiveTuning);
         this.collapseAnimRadius = this.bubbleRadius;
         this.collapseAnimColour = tuningVis.colour;
-        this.collapseAnimTimer = 200; // 200ms collapse animation
+        this.collapseAnimTimer = 400; // 400ms collapse animation
+
+        // Trigger visual collapse effect
+        triggerCollapse(this.effectState, effectiveTuning, this.bubbleRadius, tuningVis.colour);
 
         this.heatLevel = 1;
         this.shieldState = 'collapsed';
@@ -191,13 +207,35 @@ export class Shield extends GameNode implements IClusterShield {
             this.collapseAnimTimer -= delta;
         }
 
+        // Update visual effects
+        const effectiveTuning = (this.inCluster && this.clusterManager)
+            ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+            : this.tuning;
+        // Adjust budgets if in cluster
+        if (this.inCluster && this.clusterManager) {
+            const cluster = this.clusterManager.getClusterFor(this);
+            if (cluster) setClusterBudget(this.effectState, cluster.members.length);
+        } else {
+            setClusterBudget(this.effectState, 1);
+        }
+        updateShieldEffects(this.effectState, delta, effectiveTuning, this.bubbleRadius);
+
         this.drawBubble();
     }
 
     /** Absorb incoming damage. Returns the amount of damage that passed through. */
-    absorbDamage(damage: number): number {
+    absorbDamage(damage: number, impactAngle?: number): number {
         if (!this.isShieldActive()) {
             return damage; // shield is down, all damage passes through
+        }
+
+        // Trigger visual impact
+        if (impactAngle !== undefined) {
+            const effectiveTuning = (this.inCluster && this.clusterManager)
+                ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+                : this.tuning;
+            const tuningVis = getTuningVisual(effectiveTuning);
+            triggerImpact(this.effectState, impactAngle, effectiveTuning, tuningVis.colour, this.bubbleRadius);
         }
 
         const heatIncrease = damage * SHIELD_ABSORB_HEAT_PER_DAMAGE;
@@ -263,6 +301,20 @@ export class Shield extends GameNode implements IClusterShield {
         this.bubbleGraphics.x = this.x;
         this.bubbleGraphics.y = this.y;
 
+        // Collapse animation renders even when bubble is down
+        if (this.collapseAnimTimer > 0) {
+            const t = 1 - this.collapseAnimTimer / 400; // 0→1
+            const flashR = this.collapseAnimRadius * (1 + t * 0.5);
+            const flashAlpha = (1 - t) * 0.6;
+            this.bubbleGraphics.lineStyle(3, this.collapseAnimColour, flashAlpha);
+            this.bubbleGraphics.strokeCircle(0, 0, flashR);
+            this.bubbleGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
+            this.bubbleGraphics.strokeCircle(0, 0, flashR * 0.8);
+        }
+
+        // Render collapse fragments even when shield is down
+        renderShieldEffects(this.bubbleGraphics, this.effectState, 0.5, 0, 0, 0, 0);
+
         if (this.bubbleRadius <= 0) return;
 
         // Get effective tuning (cluster or individual)
@@ -272,10 +324,12 @@ export class Shield extends GameNode implements IClusterShield {
 
         // Tuning-based colour and opacity
         const tuningVis = getTuningVisual(effectiveTuning);
+        // Apply prismatic colour shift for energy shields
+        const prismaticColour = getEffectiveColour(this.effectState, effectiveTuning, tuningVis.colour);
         // Blend toward red when heat is high
         const baseColour = this.heatLevel > 0.5
-            ? this.blendColour(tuningVis.colour, COLOUR_RED, (this.heatLevel - 0.5) * 2)
-            : tuningVis.colour;
+            ? this.blendColour(prismaticColour, COLOUR_RED, (this.heatLevel - 0.5) * 2)
+            : prismaticColour;
 
         const onReserve = this.nodeState !== 'online' && this.internalReserve > 0;
         const baseAlpha = tuningVis.opacity;
@@ -285,24 +339,26 @@ export class Shield extends GameNode implements IClusterShield {
 
         const membraneAlphaScale = this.inCluster ? 0.3 : 1;
 
+        // Breathing offset for energy shields (visual only)
+        const breathOffset = getBreathingOffset(this.effectState, effectiveTuning);
+        const visualRadius = this.bubbleRadius + breathOffset;
+
         // Organic bubble — multiple layers with sine-wave radius perturbation
         const segments = 64;
 
         // Outer glow
-        this.drawOrganicRing(segments, this.bubbleRadius + 4, baseColour, alpha * 0.08 * membraneAlphaScale, 3, 0);
+        this.drawOrganicRing(segments, visualRadius + 4, baseColour, alpha * 0.08 * membraneAlphaScale, 3, 0);
 
         // Main bubble membrane
-        this.drawOrganicRing(segments, this.bubbleRadius, baseColour, alpha * 0.15 * membraneAlphaScale, 1.5, 0);
+        this.drawOrganicRing(segments, visualRadius, baseColour, alpha * 0.15 * membraneAlphaScale, 1.5, 0);
 
         // Inner shimmer ring
-        const shimmerRadius = this.bubbleRadius - 3;
+        const shimmerRadius = visualRadius - 3;
         if (shimmerRadius > 0) {
             this.drawOrganicRing(segments, shimmerRadius, baseColour, alpha * 0.08 * membraneAlphaScale, 1, Math.PI);
         }
 
         // Ripple rings — concentric waves that pulse outward
-        // When clustered, add a phase delay based on distance from cluster center
-        // so ripples appear to originate from the cluster barycenter
         const rippleCount = 3;
         let clusterDelay = 0;
         if (this.inCluster) {
@@ -313,32 +369,22 @@ export class Shield extends GameNode implements IClusterShield {
         for (let i = 0; i < rippleCount; i++) {
             const rippleLinearT = ((this.ripplePhase - clusterDelay) + i / rippleCount) % 1;
             const safeT = rippleLinearT < 0 ? rippleLinearT + 1 : rippleLinearT;
-            // Quadratic ease-in: starts slow, accelerates outward
             const rippleT = safeT * safeT;
-            const rippleR = this.bubbleRadius * (0.15 + rippleT * 0.85);
+            const rippleR = visualRadius * (0.15 + rippleT * 0.85);
             const rippleAlpha = (1 - safeT) * alpha * 0.12;
             if (rippleAlpha > 0.01) {
                 this.drawOrganicRing(segments, rippleR, baseColour, rippleAlpha, 1, i * 1.5);
             }
         }
 
+        // Render all shield effects (hex tessellation, tendrils, particles, impacts, collapse fragments)
+        renderShieldEffects(this.bubbleGraphics, this.effectState, effectiveTuning, visualRadius, baseColour, alpha, this.heatLevel);
+
         // Heat glow at the center when absorbing damage
         if (this.heatLevel > 0.1) {
             const heatGlowRadius = this.bubbleRadius * 0.4 * this.heatLevel;
             this.bubbleGraphics.fillStyle(COLOUR_RED, this.heatLevel * 0.3);
             this.bubbleGraphics.fillCircle(0, 0, heatGlowRadius);
-        }
-
-        // Collapse animation — expanding flash ring that fades
-        if (this.collapseAnimTimer > 0) {
-            const t = 1 - this.collapseAnimTimer / 200; // 0→1
-            const flashR = this.collapseAnimRadius * (1 + t * 0.5);
-            const flashAlpha = (1 - t) * 0.6;
-            this.bubbleGraphics.lineStyle(3, this.collapseAnimColour, flashAlpha);
-            this.bubbleGraphics.strokeCircle(0, 0, flashR);
-            // Inner bright flash
-            this.bubbleGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
-            this.bubbleGraphics.strokeCircle(0, 0, flashR * 0.8);
         }
     }
 
@@ -571,6 +617,7 @@ export class Shield extends GameNode implements IClusterShield {
     }
 
     destroy(fromScene?: boolean): void {
+        releaseShieldEffectState(this.effectState);
         this.bubbleGraphics.destroy();
         super.destroy(fromScene);
     }

@@ -19,6 +19,12 @@ import {
 import { getTuningVisual } from '../utils/Helpers';
 import type { CombatSystem } from '../systems/CombatSystem';
 import type { GameNode } from './Node';
+import {
+    createShieldEffectState, releaseShieldEffectState, updateShieldEffects,
+    renderShieldEffects, getBreathingOffset, getEffectiveColour,
+    triggerImpact, triggerCollapse,
+    type ShieldEffectState
+} from '../rendering/ShieldEffects';
 
 export type EnemyType = 'drone' | 'scout' | 'tank' | 'swarm' | 'lancer';
 
@@ -126,6 +132,7 @@ export class Enemy {
     private shieldCollapseAnimTimer = 0;
     private shieldCollapseAnimRadius = 0;
     private shieldCollapseAnimColour = 0x00dcff;
+    private shieldEffectState: ShieldEffectState | null = null;
 
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number, type: EnemyType = 'drone') {
         const config = ENEMY_CONFIGS[type];
@@ -163,17 +170,19 @@ export class Enemy {
             this.shieldCooldownMs = TANK_SHIELD_COOLDOWN_MS;
             this.shieldOneShot = false;
             this.shieldGraphics = scene.add.graphics();
-            this.shieldGraphics.setDepth(4); // Below enemy body
+            this.shieldGraphics.setDepth(4);
+            this.shieldEffectState = createShieldEffectState(true);
         } else if (type === 'scout') {
             this.hasShield = true;
             this.shieldActive = true;
             this.shieldRadius = SCOUT_SHIELD_RADIUS;
-            this.shieldHeatDecay = 0; // No decay — heat only goes up
+            this.shieldHeatDecay = 0;
             this.shieldHeatPerDamage = SCOUT_SHIELD_HEAT_PER_DAMAGE;
             this.shieldCooldownMs = 0;
-            this.shieldOneShot = true; // Does not regenerate
+            this.shieldOneShot = true;
             this.shieldGraphics = scene.add.graphics();
             this.shieldGraphics.setDepth(4);
+            this.shieldEffectState = createShieldEffectState(true);
         }
 
         this.draw();
@@ -211,8 +220,14 @@ export class Enemy {
     }
 
     /** Absorb damage on enemy shield with tuning bleedthrough. */
-    absorbShieldDamage(damage: number, damageType: number = 0.0, isBeam: boolean = false): number {
+    absorbShieldDamage(damage: number, damageType: number = 0.0, isBeam: boolean = false, impactAngle?: number): number {
         if (!this.isShieldUp()) return damage;
+
+        // Trigger visual impact
+        if (impactAngle !== undefined && this.shieldEffectState) {
+            const tuningVis = getTuningVisual(this.shieldTuning);
+            triggerImpact(this.shieldEffectState, impactAngle, this.shieldTuning, tuningVis.colour, this.shieldRadius);
+        }
 
         // Calculate bleedthrough based on tuning mismatch
         const mismatch = Math.abs(this.shieldTuning - damageType);
@@ -255,7 +270,12 @@ export class Enemy {
         const tuningVis = getTuningVisual(this.shieldTuning);
         this.shieldCollapseAnimRadius = this.shieldRadius;
         this.shieldCollapseAnimColour = tuningVis.colour;
-        this.shieldCollapseAnimTimer = 200;
+        this.shieldCollapseAnimTimer = 400;
+
+        // Trigger visual collapse effect (brighter for enemies)
+        if (this.shieldEffectState) {
+            triggerCollapse(this.shieldEffectState, this.shieldTuning, this.shieldRadius, tuningVis.colour);
+        }
 
         this.shieldHeat = 1;
         this.shieldActive = false;
@@ -290,6 +310,11 @@ export class Enemy {
 
         if (this.shieldCollapseAnimTimer > 0) {
             this.shieldCollapseAnimTimer -= delta;
+        }
+
+        // Update visual effects
+        if (this.shieldEffectState) {
+            updateShieldEffects(this.shieldEffectState, delta, this.shieldTuning, this.shieldRadius);
         }
 
         this.drawEnemyShield();
@@ -849,33 +874,52 @@ export class Enemy {
         this.shieldGraphics.x = this.x;
         this.shieldGraphics.y = this.y;
 
-        // Collapse animation (renders even when shield is down)
+        // Collapse animation (renders even when shield is down) — brighter for enemies
         if (this.shieldCollapseAnimTimer > 0) {
-            const t = 1 - this.shieldCollapseAnimTimer / 200;
+            const t = 1 - this.shieldCollapseAnimTimer / 400;
             const flashR = this.shieldCollapseAnimRadius * (1 + t * 0.5);
-            const flashAlpha = (1 - t) * 0.6;
+            const flashAlpha = (1 - t) * 0.8; // brighter than player
             this.shieldGraphics.lineStyle(3, this.shieldCollapseAnimColour, flashAlpha);
             this.shieldGraphics.strokeCircle(0, 0, flashR);
-            this.shieldGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
+            this.shieldGraphics.lineStyle(1.5, 0xffffff, flashAlpha * 0.6);
             this.shieldGraphics.strokeCircle(0, 0, flashR * 0.8);
+        }
+
+        // Render collapse fragments even when shield is down
+        if (this.shieldEffectState) {
+            renderShieldEffects(this.shieldGraphics, this.shieldEffectState, 0.5, 0, 0, 0, 0);
         }
 
         if (!this.shieldActive || this.shieldRadius <= 0) return;
 
         // Tuning-based colour and opacity
         const tuningVis = getTuningVisual(this.shieldTuning);
-        const colour = this.shieldHeat > 0.5
-            ? this.blendColour(tuningVis.colour, COLOUR_RED, (this.shieldHeat - 0.5) * 2)
+        const prismaticColour = this.shieldEffectState
+            ? getEffectiveColour(this.shieldEffectState, this.shieldTuning, tuningVis.colour)
             : tuningVis.colour;
+        const colour = this.shieldHeat > 0.5
+            ? this.blendColour(prismaticColour, COLOUR_RED, (this.shieldHeat - 0.5) * 2)
+            : prismaticColour;
         const alpha = tuningVis.opacity;
+
+        // Breathing offset for energy shields
+        const breathOffset = this.shieldEffectState
+            ? getBreathingOffset(this.shieldEffectState, this.shieldTuning)
+            : 0;
+        const visualRadius = this.shieldRadius + breathOffset;
 
         // Outer glow
         this.shieldGraphics.lineStyle(2, colour, alpha * 0.3);
-        this.shieldGraphics.strokeCircle(0, 0, this.shieldRadius + 2);
+        this.shieldGraphics.strokeCircle(0, 0, visualRadius + 2);
 
         // Main bubble
         this.shieldGraphics.lineStyle(1.5, colour, alpha * 0.6);
-        this.shieldGraphics.strokeCircle(0, 0, this.shieldRadius);
+        this.shieldGraphics.strokeCircle(0, 0, visualRadius);
+
+        // Render shield effects (hex, tendrils, particles, impacts)
+        if (this.shieldEffectState) {
+            renderShieldEffects(this.shieldGraphics, this.shieldEffectState, this.shieldTuning, visualRadius, colour, alpha, this.shieldHeat);
+        }
 
         // Heat glow
         if (this.shieldHeat > 0.1) {
@@ -895,6 +939,7 @@ export class Enemy {
     }
 
     destroy(): void {
+        if (this.shieldEffectState) releaseShieldEffectState(this.shieldEffectState);
         if (this.lancerBeamGraphics) this.lancerBeamGraphics.destroy();
         if (this.shieldGraphics) this.shieldGraphics.destroy();
         this.graphics.destroy();

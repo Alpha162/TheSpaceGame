@@ -9,6 +9,7 @@ import {
     CLUSTER_MEMBRANE_MARGIN,
     CLUSTER_MEMBRANE_SAMPLES
 } from '../utils/Constants';
+import { getClusterArcStyle } from '../rendering/ShieldEffects';
 
 export interface IClusterShield {
     x: number;
@@ -279,8 +280,10 @@ export class ShieldClusterManager {
     private renderClusterArcs(cluster: ShieldCluster): void {
         const g = this.clusterGraphics!;
         const amplitude = CLUSTER_ARC_AMPLITUDE * Math.sin(cluster.syncPhase * CLUSTER_ARC_SPEED);
-        const tuningVis = getTuningVisual(cluster.clusterTuning);
-        const arcColour = tuningVis.colour;
+
+        // Get tuning-aware arc styling
+        const arcStyle = getClusterArcStyle(cluster.clusterTuning, cluster.syncPhase);
+        const arcColour = arcStyle.colour;
 
         for (const [a, b] of cluster.edges) {
             const dx = b.x - a.x;
@@ -294,10 +297,16 @@ export class ShieldClusterManager {
 
             // Hub connections get emphasized styling
             const isHubEdge = a.isHub || b.isHub;
-            const innerWidth = isHubEdge ? 3 : 2;
-            const innerAlpha = isHubEdge ? 0.22 : 0.15;
-            const glowWidth = isHubEdge ? 8 : 5;
-            const glowAlpha = isHubEdge ? 0.07 : 0.04;
+            const baseInnerWidth = isHubEdge ? 3 : 2;
+            const baseInnerAlpha = isHubEdge ? 0.22 : 0.15;
+            const baseGlowWidth = isHubEdge ? 8 : 5;
+            const baseGlowAlpha = isHubEdge ? 0.07 : 0.04;
+
+            // Apply tuning-based modifiers
+            const innerWidth = baseInnerWidth * arcStyle.lineWidthMult;
+            const innerAlpha = baseInnerAlpha * arcStyle.alphaMult * arcStyle.pulse;
+            const glowWidth = baseGlowWidth * arcStyle.lineWidthMult;
+            const glowAlpha = baseGlowAlpha * arcStyle.alphaMult * arcStyle.pulse;
 
             // Draw two arcs bowing in opposite directions
             for (const sign of [1, -1]) {
@@ -373,11 +382,11 @@ export class ShieldClusterManager {
         smoothed = this.chaikinSmooth(smoothed);
         smoothed = this.chaikinSmooth(smoothed);
 
-        const tuningVis = getTuningVisual(cluster.clusterTuning);
-        const membraneColour = tuningVis.colour;
+        const arcStyle = getClusterArcStyle(cluster.clusterTuning, cluster.syncPhase);
+        const membraneColour = arcStyle.colour;
 
         // Draw glow layer
-        g.lineStyle(6, membraneColour, 0.03);
+        g.lineStyle(6, membraneColour, 0.03 * arcStyle.pulse);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
         for (let i = 1; i < smoothed.length; i++) {
@@ -387,7 +396,7 @@ export class ShieldClusterManager {
         g.strokePath();
 
         // Draw inner membrane
-        g.lineStyle(2, membraneColour, 0.08);
+        g.lineStyle(2, membraneColour, 0.08 * arcStyle.pulse);
         g.beginPath();
         g.moveTo(smoothed[0].x, smoothed[0].y);
         for (let i = 1; i < smoothed.length; i++) {

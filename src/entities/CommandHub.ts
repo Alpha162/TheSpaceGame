@@ -12,6 +12,12 @@ import {
 import { hexagonPoints, getTuningVisual } from '../utils/Helpers';
 import type { Shield } from './defence/Shield';
 import type { IClusterShield, ShieldClusterManager } from '../systems/ShieldClusterManager';
+import {
+    createShieldEffectState, releaseShieldEffectState, updateShieldEffects,
+    renderShieldEffects, getBreathingOffset, getEffectiveColour,
+    triggerImpact, triggerCollapse, setClusterBudget,
+    type ShieldEffectState
+} from '../rendering/ShieldEffects';
 
 export class CommandHub extends GameNode implements IClusterShield {
     readonly isHub = true;
@@ -43,12 +49,17 @@ export class CommandHub extends GameNode implements IClusterShield {
     private collapseAnimRadius = 0;
     private collapseAnimColour = 0x00dcff;
 
+    // Visual effects state
+    effectState: ShieldEffectState;
+
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, COMMAND_HUB_HEALTH, 0, COMMAND_HUB_RADIUS);
         this.powerGeneration = COMMAND_HUB_POWER_GEN;
 
         this.shieldGraphics = scene.add.graphics();
         this.shieldGraphics.setDepth(-2);
+
+        this.effectState = createShieldEffectState(false);
 
         this.drawNode();
 
@@ -70,10 +81,15 @@ export class CommandHub extends GameNode implements IClusterShield {
     getHeat(): number { return this.hubShieldHeat; }
     setHeat(value: number): void { this.hubShieldHeat = value; }
     collapseShield(): void {
-        const tuningVis = getTuningVisual(this.tuning);
+        const effectiveTuning = (this.inCluster && this.clusterManager)
+            ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+            : this.tuning;
+        const tuningVis = getTuningVisual(effectiveTuning);
         this.collapseAnimRadius = this.hubShieldRadius;
         this.collapseAnimColour = tuningVis.colour;
-        this.collapseAnimTimer = 200;
+        this.collapseAnimTimer = 400;
+
+        triggerCollapse(this.effectState, effectiveTuning, this.hubShieldRadius, tuningVis.colour);
 
         this.hubShieldHeat = 1;
         this.hubShieldActive = false;
@@ -124,13 +140,34 @@ export class CommandHub extends GameNode implements IClusterShield {
             }
         }
 
+        // Update visual effects
+        const effectiveTuning = (this.inCluster && this.clusterManager)
+            ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+            : this.tuning;
+        if (this.inCluster && this.clusterManager) {
+            const cluster = this.clusterManager.getClusterFor(this);
+            if (cluster) setClusterBudget(this.effectState, cluster.members.length);
+        } else {
+            setClusterBudget(this.effectState, 1);
+        }
+        updateShieldEffects(this.effectState, delta, effectiveTuning, this.hubShieldRadius);
+
         this.drawShieldBubble();
     }
 
     /** Absorb damage on the hub's built-in shield. Returns damage that passed through. */
-    absorbShieldDamage(damage: number): number {
+    absorbShieldDamage(damage: number, impactAngle?: number): number {
         if (!this.hubShieldActive || this.hubShieldRadius <= 0) {
             return damage;
+        }
+
+        // Trigger visual impact
+        if (impactAngle !== undefined) {
+            const effectiveTuning = (this.inCluster && this.clusterManager)
+                ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
+                : this.tuning;
+            const tuningVis = getTuningVisual(effectiveTuning);
+            triggerImpact(this.effectState, impactAngle, effectiveTuning, tuningVis.colour, this.hubShieldRadius);
         }
 
         const heatIncrease = damage * SHIELD_ABSORB_HEAT_PER_DAMAGE;
@@ -196,27 +233,46 @@ export class CommandHub extends GameNode implements IClusterShield {
         this.shieldGraphics.x = this.x;
         this.shieldGraphics.y = this.y;
 
-        if (this.hubShieldRadius <= 0 && this.collapseAnimTimer <= 0) return;
+        // Collapse animation renders even when shield is down
+        if (this.collapseAnimTimer > 0) {
+            const t = 1 - this.collapseAnimTimer / 400;
+            const flashR = this.collapseAnimRadius * (1 + t * 0.5);
+            const flashAlpha = (1 - t) * 0.6;
+            this.shieldGraphics.lineStyle(3, this.collapseAnimColour, flashAlpha);
+            this.shieldGraphics.strokeCircle(0, 0, flashR);
+            this.shieldGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
+            this.shieldGraphics.strokeCircle(0, 0, flashR * 0.8);
+        }
+
+        // Render collapse fragments even when shield is down
+        renderShieldEffects(this.shieldGraphics, this.effectState, 0.5, 0, 0, 0, 0);
+
+        if (this.hubShieldRadius <= 0) return;
 
         // Tuning-based colour and opacity
         const effectiveTuning = (this.inCluster && this.clusterManager)
             ? (this.clusterManager.getClusterFor(this)?.clusterTuning ?? this.tuning)
             : this.tuning;
         const tuningVis = getTuningVisual(effectiveTuning);
+        const prismaticColour = getEffectiveColour(this.effectState, effectiveTuning, tuningVis.colour);
         const colour = this.hubShieldHeat > 0.5
-            ? this.blendColour(tuningVis.colour, COLOUR_RED, (this.hubShieldHeat - 0.5) * 2)
-            : tuningVis.colour;
+            ? this.blendColour(prismaticColour, COLOUR_RED, (this.hubShieldHeat - 0.5) * 2)
+            : prismaticColour;
         const alpha = tuningVis.opacity;
         const membraneAlphaScale = this.inCluster ? 0.35 : 1;
         const segments = 64;
 
+        // Breathing offset for energy shields
+        const breathOffset = getBreathingOffset(this.effectState, effectiveTuning);
+        const visualRadius = this.hubShieldRadius + breathOffset;
+
         // Outer glow
-        this.drawRing(segments, this.hubShieldRadius + 4, colour, alpha * 0.08 * membraneAlphaScale, 3);
+        this.drawRing(segments, visualRadius + 4, colour, alpha * 0.08 * membraneAlphaScale, 3);
         // Main membrane
-        this.drawRing(segments, this.hubShieldRadius, colour, alpha * 0.12 * membraneAlphaScale, 1.5);
+        this.drawRing(segments, visualRadius, colour, alpha * 0.12 * membraneAlphaScale, 1.5);
         // Inner shimmer
-        if (this.hubShieldRadius > 5) {
-            this.drawRing(segments, this.hubShieldRadius - 3, colour, alpha * 0.06 * membraneAlphaScale, 1);
+        if (visualRadius > 5) {
+            this.drawRing(segments, visualRadius - 3, colour, alpha * 0.06 * membraneAlphaScale, 1);
         }
 
         // Ripple rings (with cluster delay from barycenter)
@@ -229,28 +285,20 @@ export class CommandHub extends GameNode implements IClusterShield {
         for (let i = 0; i < 3; i++) {
             const rawT = ((this.ripplePhase - clusterDelay) + i / 3) % 1;
             const t = rawT < 0 ? rawT + 1 : rawT;
-            const r = this.hubShieldRadius * (0.15 + t * t * 0.85);
+            const r = visualRadius * (0.15 + t * t * 0.85);
             const a = (1 - t) * alpha * 0.1;
             if (a > 0.01) {
                 this.drawRing(segments, r, colour, a, 1);
             }
         }
 
+        // Render all shield effects
+        renderShieldEffects(this.shieldGraphics, this.effectState, effectiveTuning, visualRadius, colour, alpha, this.hubShieldHeat);
+
         // Heat glow
         if (this.hubShieldHeat > 0.1 && this.hubShieldRadius > 0) {
             this.shieldGraphics.fillStyle(COLOUR_RED, this.hubShieldHeat * 0.25);
             this.shieldGraphics.fillCircle(0, 0, this.hubShieldRadius * 0.4 * this.hubShieldHeat);
-        }
-
-        // Collapse animation
-        if (this.collapseAnimTimer > 0) {
-            const t = 1 - this.collapseAnimTimer / 200;
-            const flashR = this.collapseAnimRadius * (1 + t * 0.5);
-            const flashAlpha = (1 - t) * 0.6;
-            this.shieldGraphics.lineStyle(3, this.collapseAnimColour, flashAlpha);
-            this.shieldGraphics.strokeCircle(0, 0, flashR);
-            this.shieldGraphics.lineStyle(1, 0xffffff, flashAlpha * 0.5);
-            this.shieldGraphics.strokeCircle(0, 0, flashR * 0.8);
         }
     }
 
@@ -395,6 +443,7 @@ export class CommandHub extends GameNode implements IClusterShield {
     }
 
     destroy(fromScene?: boolean): void {
+        releaseShieldEffectState(this.effectState);
         if (this.glowTween) {
             this.glowTween.destroy();
         }
