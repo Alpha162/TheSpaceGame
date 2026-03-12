@@ -58,7 +58,7 @@ interface CollapseFragment {
 }
 
 // ── Impact flash ──────────────────────────────────────────────────────
-interface ImpactFlash {
+export interface ImpactFlash {
     angle: number;       // where on the circumference
     timer: number;       // ms remaining
     colour: number;
@@ -103,6 +103,9 @@ export interface ShieldEffectState {
 
     // Whether collapse is brighter (enemy shields)
     brightCollapse: boolean;
+
+    // Whether this shield is in a cluster (hex rendered at cluster level)
+    inCluster: boolean;
 }
 
 // ── Prismatic colour palette ──────────────────────────────────────────
@@ -248,6 +251,7 @@ export function createShieldEffectState(isEnemy: boolean): ShieldEffectState {
         tendrilAccelAngle: 0,
         isEnemy,
         brightCollapse: isEnemy,
+        inCluster: false,
     };
 }
 
@@ -268,6 +272,7 @@ export function releaseShieldEffectState(state: ShieldEffectState): void {
  * A cluster of N shields gets roughly 1.5× solo budget, not N× solo.
  */
 export function setClusterBudget(state: ShieldEffectState, clusterSize: number): void {
+    state.inCluster = clusterSize > 1;
     if (clusterSize <= 1) {
         state.maxTendrils = state.isEnemy ? 6 : 12;
         state.maxParticles = state.isEnemy ? 8 : 20;
@@ -725,45 +730,72 @@ function renderHexTessellation(
     baseColour: number,
     baseAlpha: number
 ): void {
-    // Cell size: roughly 8-10 cells across diameter
-    const cellSize = (radius * 2) / 9;
-    const halfCell = cellSize * 0.55; // hex radius (corner-to-corner / 2)
-    const cells = computeHexGrid(radius, cellSize);
+    // Skip if this shield is in a cluster — cluster renders unified hex instead
+    if (state.inCluster) return;
 
-    // Apply rotation to cells
-    const cos = Math.cos(state.hexRotation);
-    const sin = Math.sin(state.hexRotation);
+    renderHexTessellationAt(g, state.hexRotation, state.impacts, kineticIntensity, radius,
+        0, 0, radius, baseColour, baseAlpha);
+}
+
+/**
+ * Core hex tessellation renderer. Can be called for individual shields (centreX/Y=0)
+ * or for cluster-level rendering (centreX/Y = cluster barycenter offset).
+ * `clipRadius` defines the outer boundary; hex cells only render in the outer 35% ring.
+ * `gridRadius` controls the extent of the hex grid generation.
+ */
+export function renderHexTessellationAt(
+    g: Phaser.GameObjects.Graphics,
+    hexRotation: number,
+    impacts: ImpactFlash[],
+    kineticIntensity: number,
+    gridRadius: number,
+    centreX: number,
+    centreY: number,
+    clipRadius: number,
+    baseColour: number,
+    baseAlpha: number
+): void {
+    // Cell size: roughly 8-10 cells across diameter
+    const cellSize = (gridRadius * 2) / 9;
+    const halfCell = cellSize * 0.55;
+    const cells = computeHexGrid(gridRadius, cellSize);
+
+    const cos = Math.cos(hexRotation);
+    const sin = Math.sin(hexRotation);
 
     const edgeAlpha = kineticIntensity * 0.6 * baseAlpha;
     const fillAlpha = kineticIntensity * 0.05 * baseAlpha;
 
-    // Get the kinetic bronze/amber colour from the tuning palette
     const tuningVis = getTuningVisual(0.0);
     const hexColour = blendColourHex(baseColour, tuningVis.colour, kineticIntensity * 0.5);
 
-    for (const cell of cells) {
-        // Rotate cell position
-        const rx = cell.cx * cos - cell.cy * sin;
-        const ry = cell.cx * sin + cell.cy * cos;
+    // Only draw cells in the outer 35% ring (inner radius = 65% of clip radius)
+    const innerRadiusSq = (clipRadius * 0.65) * (clipRadius * 0.65);
+    const outerRadiusSq = clipRadius * clipRadius;
 
-        // Only draw cells within the shield radius
-        if (rx * rx + ry * ry > radius * radius) continue;
+    for (const cell of cells) {
+        const rx = cell.cx * cos - cell.cy * sin + centreX;
+        const ry = cell.cx * sin + cell.cy * cos + centreY;
+
+        // Only draw cells in the outer ring band
+        const distSq = rx * rx + ry * ry;
+        if (distSq > outerRadiusSq || distSq < innerRadiusSq) continue;
 
         drawHexCell(g, rx, ry, halfCell, hexColour, edgeAlpha, fillAlpha, 0.8);
     }
 
     // Find active impact flash cells
-    for (const impact of state.impacts) {
+    for (const impact of impacts) {
         if (impact.style !== 'kinetic') continue;
-        const impactIdx = closestHexCell(cells, impact.angle, radius * 0.9);
+        const impactIdx = closestHexCell(cells, impact.angle, gridRadius * 0.9);
         if (impactIdx < 0) continue;
 
-        // Flash the hit cell and ripple rings
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
-            const rx = cell.cx * cos - cell.cy * sin;
-            const ry = cell.cx * sin + cell.cy * cos;
-            if (rx * rx + ry * ry > radius * radius) continue;
+            const rx = cell.cx * cos - cell.cy * sin + centreX;
+            const ry = cell.cx * sin + cell.cy * cos + centreY;
+            const distSq = rx * rx + ry * ry;
+            if (distSq > outerRadiusSq) continue;
 
             const hitCell = cells[impactIdx];
             const dx = cell.cx - hitCell.cx;

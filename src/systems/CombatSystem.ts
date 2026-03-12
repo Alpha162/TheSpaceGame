@@ -17,7 +17,8 @@ import {
     COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
 import type { ShieldCluster } from './ShieldClusterManager';
-import { distanceBetween } from '../utils/Helpers';
+import { distanceBetween, getTuningVisual } from '../utils/Helpers';
+import { triggerImpact } from '../rendering/ShieldEffects';
 import { SoundManager } from './SoundManager';
 
 interface Projectile {
@@ -153,7 +154,8 @@ export class CombatSystem {
             // Player weapon → enemy: check enemy shield first
             const enemy = target as Enemy;
             if (enemy.isShieldUp()) {
-                enemy.absorbShieldDamage(damage, damageType, isBeam);
+                const impactAngle = Math.atan2(source.y - enemy.y, source.x - enemy.x);
+                enemy.absorbShieldDamage(damage, damageType, isBeam, impactAngle);
                 SoundManager.play('shieldHit');
             } else {
                 enemy.takeDamage(damage);
@@ -173,7 +175,7 @@ export class CombatSystem {
                         hub.x, hub.y, hub.hubShieldRadius
                     );
                     if (intersects) {
-                        this.applyPlayerShieldDamage(hub, damage, damageType, isBeam, isAoE);
+                        this.applyPlayerShieldDamage(hub, damage, damageType, isBeam, isAoE, source);
                         return;
                     }
                 }
@@ -191,7 +193,7 @@ export class CombatSystem {
                     activeShields
                 );
                 if (interceptingShield) {
-                    this.applyPlayerShieldDamage(interceptingShield, damage, damageType, isBeam, isAoE);
+                    this.applyPlayerShieldDamage(interceptingShield, damage, damageType, isBeam, isAoE, source);
                     return;
                 }
             }
@@ -215,8 +217,22 @@ export class CombatSystem {
         damage: number,
         damageType: number,
         isBeam: boolean,
-        isAoE: boolean
+        isAoE: boolean,
+        source?: DamageEntity
     ): void {
+        // Trigger visual impact effect
+        if (source) {
+            const shieldX = shield.x;
+            const shieldY = shield.y;
+            const impactAngle = Math.atan2(source.y - shieldY, source.x - shieldX);
+            const effectiveTuningForImpact = shield instanceof Shield
+                ? (shield.clusterManager?.getClusterFor(shield)?.clusterTuning ?? shield.tuning)
+                : ((shield as CommandHub).clusterManager?.getClusterFor(shield as any)?.clusterTuning ?? (shield as CommandHub).tuning);
+            const tuningVis = getTuningVisual(effectiveTuningForImpact);
+            const shieldRadius = shield instanceof Shield ? shield.bubbleRadius : (shield as CommandHub).hubShieldRadius;
+            triggerImpact(shield.effectState, impactAngle, effectiveTuningForImpact, tuningVis.colour, shieldRadius);
+        }
+
         // Get effective tuning (cluster tuning if clustered, individual otherwise)
         let effectiveTuning: number;
         let cluster: ShieldCluster | undefined;
@@ -668,7 +684,7 @@ export class CombatSystem {
                 if (hub.isHubShieldUp()) {
                     const dist = distanceBetween(p.x, p.y, hub.x, hub.y);
                     if (dist <= hub.hubShieldRadius) {
-                        this.applyPlayerShieldDamage(hub, p.damage, p.damageType, false, false);
+                        this.applyPlayerShieldDamage(hub, p.damage, p.damageType, false, false, p);
                         hit = true;
                     }
                 }
@@ -678,7 +694,7 @@ export class CombatSystem {
                     for (const shield of activeShields) {
                         const dist = distanceBetween(p.x, p.y, shield.x, shield.y);
                         if (dist <= shield.bubbleRadius) {
-                            this.applyPlayerShieldDamage(shield, p.damage, p.damageType, false, false);
+                            this.applyPlayerShieldDamage(shield, p.damage, p.damageType, false, false, p);
                             hit = true;
                             break;
                         }

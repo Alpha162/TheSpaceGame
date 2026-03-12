@@ -9,7 +9,7 @@ import {
     CLUSTER_MEMBRANE_MARGIN,
     CLUSTER_MEMBRANE_SAMPLES
 } from '../utils/Constants';
-import { getClusterArcStyle } from '../rendering/ShieldEffects';
+import { getClusterArcStyle, renderHexTessellationAt, type ShieldEffectState, type ImpactFlash } from '../rendering/ShieldEffects';
 
 export interface IClusterShield {
     x: number;
@@ -29,6 +29,8 @@ export interface IClusterShield {
     tuning: number;
     manualLock: boolean;
     lastTuningDriftTime: number;
+    /** Visual effect state for cluster-level rendering */
+    effectState: ShieldEffectState;
 }
 
 export interface ShieldCluster {
@@ -40,6 +42,8 @@ export interface ShieldCluster {
     clusterTuning: number;
     clusterManualLock: boolean;
     lastTuningDriftTime: number;
+    /** Unified hex rotation for cluster-level kinetic tessellation */
+    hexRotation: number;
 }
 
 export class ShieldClusterManager {
@@ -49,6 +53,7 @@ export class ShieldClusterManager {
     private prevPhases: Map<string, number> = new Map();
     private prevTuning: Map<string, number> = new Map();
     private prevLock: Map<string, boolean> = new Map();
+    private prevHexRotation: Map<string, number> = new Map();
     private clusterGraphics: Phaser.GameObjects.Graphics | null = null;
 
     init(scene: Phaser.Scene): void {
@@ -156,6 +161,7 @@ export class ShieldClusterManager {
             const prevPhase = this.prevPhases.get(key) ?? 0;
             const prevTuning = this.prevTuning.get(key);
             const prevLock = this.prevLock.get(key);
+            const prevHexRot = this.prevHexRotation.get(key) ?? 0;
 
             // If this exact cluster existed before, keep its tuning/lock.
             // Otherwise average member tunings (which already inherited from
@@ -169,7 +175,8 @@ export class ShieldClusterManager {
                 members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy,
                 clusterTuning,
                 clusterManualLock,
-                lastTuningDriftTime: 0
+                lastTuningDriftTime: 0,
+                hexRotation: prevHexRot,
             };
             this.clusters.push(cluster);
             newPhases.set(key, prevPhase);
@@ -253,18 +260,26 @@ export class ShieldClusterManager {
     updateSyncPhase(delta: number): void {
         for (const cluster of this.clusters) {
             cluster.syncPhase += delta * 0.0008;
+            // Advance cluster hex rotation (1 rotation per 30s)
+            const kineticIntensity = cluster.clusterTuning < 0.5
+                ? Math.min(1.0, (0.5 - cluster.clusterTuning) / 0.2)
+                : 0.0;
+            if (kineticIntensity > 0) {
+                cluster.hexRotation += (delta / 1000) * (Math.PI * 2 / 30);
+            }
             // Persist for next rebuild
             const key = this.clusterKey(cluster.members);
             this.prevPhases.set(key, cluster.syncPhase);
             this.prevTuning.set(key, cluster.clusterTuning);
             this.prevLock.set(key, cluster.clusterManualLock);
+            this.prevHexRotation.set(key, cluster.hexRotation);
             for (const member of cluster.members) {
                 member.clusterSyncPhase = cluster.syncPhase;
             }
         }
     }
 
-    /** Render all cluster visuals (arcs + membrane). Called each frame. */
+    /** Render all cluster visuals (arcs + membrane + unified hex). Called each frame. */
     renderClusters(): void {
         if (!this.clusterGraphics) return;
         this.clusterGraphics.clear();
@@ -272,6 +287,7 @@ export class ShieldClusterManager {
         for (const cluster of this.clusters) {
             this.renderClusterArcs(cluster);
             this.renderClusterMembrane(cluster);
+            this.renderClusterHex(cluster);
         }
     }
 
@@ -404,6 +420,176 @@ export class ShieldClusterManager {
         }
         g.closePath();
         g.strokePath();
+    }
+
+    // ── Unified cluster hex tessellation ─────────────────────────────
+
+    private renderClusterHex(cluster: ShieldCluster): void {
+        const g = this.clusterGraphics!;
+        const tuning = cluster.clusterTuning;
+        const kineticIntensity = tuning < 0.5
+            ? Math.min(1.0, (0.5 - tuning) / 0.2)
+            : 0.0;
+        if (kineticIntensity < 0.01) return;
+
+        // Compute a grid radius that covers the full cluster extent
+        let maxExtent = 0;
+        for (const m of cluster.members) {
+            const dx = m.x - cluster.centerX;
+            const dy = m.y - cluster.centerY;
+            const dist = Math.sqrt(dx * dx + dy * dy) + m.getShieldRadius();
+            if (dist > maxExtent) maxExtent = dist;
+        }
+
+        // Collect all impact flashes from member shields
+        const allImpacts: ImpactFlash[] = [];
+        for (const m of cluster.members) {
+            for (const impact of m.effectState.impacts) {
+                allImpacts.push(impact);
+            }
+        }
+
+        // Get base colour from tuning visual
+        const tuningVis = getTuningVisual(tuning);
+        const baseColour = tuningVis.colour;
+        const baseAlpha = tuningVis.alpha;
+
+        // Use a custom rendering approach: generate hex grid at cluster centre,
+        // but only draw cells that fall inside at least one member shield circle.
+        // This creates the unified armour shell look.
+        const cellSize = (maxExtent * 2) / 9;
+        const halfCell = cellSize * 0.55;
+
+        // Generate hex grid centred at origin
+        const cells = this.computeClusterHexGrid(maxExtent, cellSize);
+
+        const cos = Math.cos(cluster.hexRotation);
+        const sin = Math.sin(cluster.hexRotation);
+
+        const edgeAlpha = kineticIntensity * 0.6 * baseAlpha;
+        const fillAlpha = kineticIntensity * 0.05 * baseAlpha;
+
+        for (const cell of cells) {
+            // Rotate around cluster centre
+            const rx = cell.cx * cos - cell.cy * sin + cluster.centerX;
+            const ry = cell.cx * sin + cell.cy * cos + cluster.centerY;
+
+            // Check if this cell falls inside any member shield's outer ring
+            let insideAny = false;
+            for (const m of cluster.members) {
+                const dx = rx - m.x;
+                const dy = ry - m.y;
+                const distSq = dx * dx + dy * dy;
+                const r = m.getShieldRadius();
+                const outerSq = r * r;
+                const innerSq = (r * 0.65) * (r * 0.65);
+                if (distSq <= outerSq && distSq >= innerSq) {
+                    insideAny = true;
+                    break;
+                }
+            }
+            if (!insideAny) continue;
+
+            this.drawClusterHexCell(g, rx, ry, halfCell, baseColour, edgeAlpha, fillAlpha, 0.8);
+        }
+
+        // Impact flash rendering for cluster hex
+        for (const impact of allImpacts) {
+            if (impact.style !== 'kinetic') continue;
+            const impactPx = Math.cos(impact.angle) * maxExtent * 0.9;
+            const impactPy = Math.sin(impact.angle) * maxExtent * 0.9;
+
+            // Find closest cell to impact
+            let bestIdx = 0;
+            let bestDist = Infinity;
+            for (let i = 0; i < cells.length; i++) {
+                const dx = cells[i].cx - impactPx;
+                const dy = cells[i].cy - impactPy;
+                const d = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; bestIdx = i; }
+            }
+
+            const hitCell = cells[bestIdx];
+            for (const cell of cells) {
+                const rx = cell.cx * cos - cell.cy * sin + cluster.centerX;
+                const ry = cell.cx * sin + cell.cy * cos + cluster.centerY;
+
+                // Must be inside a member shield
+                let inside = false;
+                for (const m of cluster.members) {
+                    const dx = rx - m.x;
+                    const dy = ry - m.y;
+                    if (dx * dx + dy * dy <= m.getShieldRadius() * m.getShieldRadius()) {
+                        inside = true;
+                        break;
+                    }
+                }
+                if (!inside) continue;
+
+                const dx = cell.cx - hitCell.cx;
+                const dy = cell.cy - hitCell.cy;
+                const distCells = Math.sqrt(dx * dx + dy * dy) / cellSize;
+                const ring = Math.round(distCells);
+
+                if (ring <= impact.rippleRing && ring <= 3) {
+                    const flashFade = 1 - (impact.rippleRing > 0 ? (ring / impact.rippleRing) * 0.5 : 0);
+                    const flashAlpha = flashFade * (impact.timer / 300) * baseAlpha;
+                    if (ring === 0) {
+                        this.drawClusterHexCell(g, rx, ry, halfCell, 0xffffff, flashAlpha * 0.8, flashAlpha * 0.3, 1.2);
+                    } else {
+                        this.drawClusterHexCell(g, rx, ry, halfCell, baseColour, flashAlpha * 0.4, 0, 1);
+                    }
+                }
+            }
+        }
+    }
+
+    private computeClusterHexGrid(radius: number, cellSize: number): Array<{ cx: number; cy: number }> {
+        const cells: Array<{ cx: number; cy: number }> = [];
+        const rowH = cellSize * Math.sqrt(3) / 2;
+        const rows = Math.ceil(radius / rowH) + 1;
+        for (let row = -rows; row <= rows; row++) {
+            const y = row * rowH;
+            const offset = (row % 2 !== 0) ? cellSize * 0.5 : 0;
+            const cols = Math.ceil(radius / cellSize) + 1;
+            for (let col = -cols; col <= cols; col++) {
+                const x = col * cellSize + offset;
+                if (x * x + y * y <= (radius + cellSize) * (radius + cellSize)) {
+                    cells.push({ cx: x, cy: y });
+                }
+            }
+        }
+        return cells;
+    }
+
+    private drawClusterHexCell(
+        g: Phaser.GameObjects.Graphics,
+        cx: number, cy: number,
+        halfSize: number,
+        colour: number, edgeAlpha: number, fillAlpha: number,
+        lineWidth: number
+    ): void {
+        const pts: Array<{ x: number; y: number }> = [];
+        for (let i = 0; i < 6; i++) {
+            const a = (Math.PI / 3) * i - Math.PI / 6;
+            pts.push({ x: cx + halfSize * Math.cos(a), y: cy + halfSize * Math.sin(a) });
+        }
+        if (fillAlpha > 0.005) {
+            g.fillStyle(0x000000, fillAlpha);
+            g.beginPath();
+            g.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < 6; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.closePath();
+            g.fillPath();
+        }
+        if (edgeAlpha > 0.005) {
+            g.lineStyle(lineWidth, colour, edgeAlpha);
+            g.beginPath();
+            g.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < 6; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.closePath();
+            g.strokePath();
+        }
     }
 
     // ── Geometry helpers ───────────────────────────────────────────
