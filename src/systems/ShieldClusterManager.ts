@@ -55,16 +55,24 @@ export class ShieldClusterManager {
     private prevLock: Map<string, boolean> = new Map();
     private prevHexRotation: Map<string, number> = new Map();
     private clusterGraphics: Phaser.GameObjects.Graphics | null = null;
+    /** Separate graphics layer for cluster hex — must render ABOVE individual bubble graphics (depth -2) */
+    private clusterHexGraphics: Phaser.GameObjects.Graphics | null = null;
 
     init(scene: Phaser.Scene): void {
         this.clusterGraphics = scene.add.graphics();
         this.clusterGraphics.setDepth(-3);
+        this.clusterHexGraphics = scene.add.graphics();
+        this.clusterHexGraphics.setDepth(-1);
     }
 
     destroy(): void {
         if (this.clusterGraphics) {
             this.clusterGraphics.destroy();
             this.clusterGraphics = null;
+        }
+        if (this.clusterHexGraphics) {
+            this.clusterHexGraphics.destroy();
+            this.clusterHexGraphics = null;
         }
     }
 
@@ -283,6 +291,7 @@ export class ShieldClusterManager {
     renderClusters(): void {
         if (!this.clusterGraphics) return;
         this.clusterGraphics.clear();
+        if (this.clusterHexGraphics) this.clusterHexGraphics.clear();
 
         for (const cluster of this.clusters) {
             this.renderClusterArcs(cluster);
@@ -425,7 +434,8 @@ export class ShieldClusterManager {
     // ── Unified cluster hex tessellation ─────────────────────────────
 
     private renderClusterHex(cluster: ShieldCluster): void {
-        const g = this.clusterGraphics!;
+        if (!this.clusterHexGraphics) return;
+        const g = this.clusterHexGraphics;
         const tuning = cluster.clusterTuning;
         const kineticIntensity = tuning < 0.5
             ? Math.min(1.0, (0.5 - tuning) / 0.2)
