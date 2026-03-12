@@ -9,6 +9,10 @@ import {
     LANCER_LOCK_TIME_MS, LANCER_REWARD, LANCER_RADIUS,
     TANK_SHIELD_RADIUS, TANK_SHIELD_HEAT_DECAY, TANK_SHIELD_HEAT_PER_DAMAGE, TANK_SHIELD_COOLDOWN_MS,
     SCOUT_SHIELD_RADIUS, SCOUT_SHIELD_HEAT_PER_DAMAGE,
+    SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
+    SHIELD_TUNE_DRIFT_PER_HIT,
+    SHIELD_TUNE_BLEEDTHROUGH_MIN, SHIELD_TUNE_BLEEDTHROUGH_MAX,
+    TUNING_DRIFT_MIN_INTERVAL_MS,
     COLOUR_RED, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_CYAN,
     COLOUR_SCOUT, COLOUR_TANK, COLOUR_SWARM, COLOUR_LANCER
 } from '../utils/Constants';
@@ -115,6 +119,9 @@ export class Enemy {
     private shieldCooldownTimer = 0;
     private shieldOneShot = false;
     private shieldGraphics: Phaser.GameObjects.Graphics | null = null;
+    /** Shield tuning (0.0 = kinetic, 0.5 = balanced, 1.0 = energy) */
+    shieldTuning = SHIELD_TUNE_DEFAULT;
+    private shieldLastDriftTime = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number, targetX: number, targetY: number, type: EnemyType = 'drone') {
         const config = ENEMY_CONFIGS[type];
@@ -199,11 +206,29 @@ export class Enemy {
         return this.hasShield && this.shieldActive;
     }
 
-    /** Absorb damage on enemy shield. Returns damage that passed through (0 if absorbed). */
-    absorbShieldDamage(damage: number): number {
+    /** Absorb damage on enemy shield with tuning bleedthrough. */
+    absorbShieldDamage(damage: number, damageType: number = 0.0, isBeam: boolean = false): number {
         if (!this.isShieldUp()) return damage;
 
-        const heatIncrease = damage * this.shieldHeatPerDamage;
+        // Calculate bleedthrough based on tuning mismatch
+        const mismatch = Math.abs(this.shieldTuning - damageType);
+        const bleedthrough = SHIELD_TUNE_BLEEDTHROUGH_MIN
+            + (SHIELD_TUNE_BLEEDTHROUGH_MAX - SHIELD_TUNE_BLEEDTHROUGH_MIN)
+            * mismatch;
+
+        // Apply tuning drift (beam rate-capped)
+        const now = performance.now();
+        if (isBeam) {
+            if (now - this.shieldLastDriftTime >= TUNING_DRIFT_MIN_INTERVAL_MS) {
+                this.applyEnemyShieldDrift(damageType);
+                this.shieldLastDriftTime = now;
+            }
+        } else {
+            this.applyEnemyShieldDrift(damageType);
+        }
+
+        // Apply heat scaled by bleedthrough
+        const heatIncrease = damage * bleedthrough * this.shieldHeatPerDamage;
         this.shieldHeat += heatIncrease;
 
         if (this.shieldHeat >= 1) {
@@ -211,6 +236,15 @@ export class Enemy {
         }
 
         return 0; // Fully absorbed
+    }
+
+    /** Auto-drift enemy shield tuning toward incoming damage type */
+    private applyEnemyShieldDrift(incomingDamageType: number): void {
+        if (incomingDamageType < this.shieldTuning) {
+            this.shieldTuning = Math.max(SHIELD_TUNE_MIN, this.shieldTuning - SHIELD_TUNE_DRIFT_PER_HIT);
+        } else if (incomingDamageType > this.shieldTuning) {
+            this.shieldTuning = Math.min(SHIELD_TUNE_MAX, this.shieldTuning + SHIELD_TUNE_DRIFT_PER_HIT);
+        }
     }
 
     private collapseEnemyShield(): void {
@@ -241,6 +275,7 @@ export class Enemy {
                 this.shieldCooldownTimer = 0;
                 this.shieldHeat = 0;
                 this.shieldActive = true;
+                this.shieldTuning = SHIELD_TUNE_DEFAULT; // Reset tuning on redeploy
             }
         }
 

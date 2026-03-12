@@ -67,6 +67,17 @@ export const SHIELD_RESERVE_FIRE_MULTIPLIER = 8;   // drains 8x faster under fir
 export const SHIELD_RESERVE_CHARGE_RATE = 0.0004;  // charge per ms (~2.5s to fill when online)
 export const SHIELD_CLUSTER_OVERLAP_MARGIN = 20;   // px of overlap forgiveness for cluster detection
 
+// Shield Tuning
+export const SHIELD_TUNE_DEFAULT = 0.5;              // balanced on deploy
+export const SHIELD_TUNE_MIN = 0.0;                  // full kinetic specialisation
+export const SHIELD_TUNE_MAX = 1.0;                  // full energy specialisation
+export const SHIELD_TUNE_DRIFT_PER_HIT = 0.03;       // auto-drift toward incoming damage type per hit
+export const SHIELD_TUNE_DRIFT_DECAY = 0.001;        // per frame, relaxes toward 0.5 when idle
+export const SHIELD_TUNE_MANUAL_DRIFT_MULT = 0.5;    // drift rate multiplier when manually locked
+export const SHIELD_TUNE_BLEEDTHROUGH_MIN = 0.15;    // best case damage passthrough (perfect tune match)
+export const SHIELD_TUNE_BLEEDTHROUGH_MAX = 0.85;    // worst case damage passthrough (full mismatch)
+export const TUNING_DRIFT_MIN_INTERVAL_MS = 200;     // beam weapons: max 5 drift applications per second
+
 // Cluster visual constants
 export const COLOUR_CLUSTER_VIOLET = 0x9966ff;
 export const CLUSTER_ARC_SEGMENTS = 24;

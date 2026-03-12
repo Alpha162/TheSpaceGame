@@ -5,6 +5,10 @@ import {
     SHIELD_COLLAPSE_COOLDOWN_MS, SHIELD_ABSORB_HEAT_PER_DAMAGE,
     SHIELD_RESERVE_MAX, SHIELD_RESERVE_DRAIN_RATE, SHIELD_RESERVE_FIRE_MULTIPLIER,
     SHIELD_RESERVE_CHARGE_RATE,
+    SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
+    SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_DRIFT_DECAY, SHIELD_TUNE_MANUAL_DRIFT_MULT,
+    SHIELD_TUNE_BLEEDTHROUGH_MIN, SHIELD_TUNE_BLEEDTHROUGH_MAX,
+    TUNING_DRIFT_MIN_INTERVAL_MS,
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED, COLOUR_SELECTION,
     PowerPriority
 } from '../../utils/Constants';
@@ -32,6 +36,11 @@ export class Shield extends GameNode implements IClusterShield {
     clusterSyncPhase = 0;
     clusterCenterX = 0;
     clusterCenterY = 0;
+
+    // Shield tuning
+    tuning: number = SHIELD_TUNE_DEFAULT;
+    manualLock = false;
+    lastTuningDriftTime = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, SHIELD_HEALTH, SHIELD_POWER_DEPLOY, SHIELD_RADIUS);
@@ -139,6 +148,10 @@ export class Shield extends GameNode implements IClusterShield {
                     const decayMult = (powered ? 1 : 0.3) * this.heatDecayMultiplier;
                     this.heatLevel = Math.max(0, this.heatLevel - SHIELD_HEAT_DECAY * decayMult);
                 }
+                // Idle tuning decay (only if not in a cluster — cluster manages its own)
+                if (!this.inCluster) {
+                    this.updateTuningDecay();
+                }
                 break;
 
             case 'collapsed':
@@ -154,6 +167,9 @@ export class Shield extends GameNode implements IClusterShield {
                     this.cooldownTimer = 0;
                     this.heatLevel = 0;
                     this.shieldState = 'deploying';
+                    // Reset tuning on redeploy
+                    this.tuning = SHIELD_TUNE_DEFAULT;
+                    this.manualLock = false;
                 }
                 break;
         }
@@ -183,6 +199,45 @@ export class Shield extends GameNode implements IClusterShield {
 
     isShieldActive(): boolean {
         return this.shieldState === 'deploying' || this.shieldState === 'maintaining';
+    }
+
+    /** Auto-drift tuning toward incoming damage type */
+    applyTuningDrift(incomingDamageType: number): void {
+        const driftRate = this.manualLock
+            ? SHIELD_TUNE_DRIFT_PER_HIT * SHIELD_TUNE_MANUAL_DRIFT_MULT
+            : SHIELD_TUNE_DRIFT_PER_HIT;
+
+        if (incomingDamageType < this.tuning) {
+            this.tuning = Math.max(SHIELD_TUNE_MIN, this.tuning - driftRate);
+        } else if (incomingDamageType > this.tuning) {
+            this.tuning = Math.min(SHIELD_TUNE_MAX, this.tuning + driftRate);
+        }
+    }
+
+    /** Idle decay: relax tuning toward 0.5 each frame */
+    updateTuningDecay(): void {
+        if (this.tuning > 0.5) {
+            this.tuning = Math.max(0.5, this.tuning - SHIELD_TUNE_DRIFT_DECAY);
+        } else if (this.tuning < 0.5) {
+            this.tuning = Math.min(0.5, this.tuning + SHIELD_TUNE_DRIFT_DECAY);
+        }
+    }
+
+    /** Calculate damage bleedthrough based on tuning vs incoming type */
+    calculateBleedthrough(incomingDamageType: number): number {
+        const mismatch = Math.abs(this.tuning - incomingDamageType);
+        return SHIELD_TUNE_BLEEDTHROUGH_MIN
+            + (SHIELD_TUNE_BLEEDTHROUGH_MAX - SHIELD_TUNE_BLEEDTHROUGH_MIN)
+            * mismatch;
+    }
+
+    setManualTuning(value: number): void {
+        this.tuning = Math.max(SHIELD_TUNE_MIN, Math.min(SHIELD_TUNE_MAX, value));
+        this.manualLock = true;
+    }
+
+    clearManualLock(): void {
+        this.manualLock = false;
     }
 
     private drawBubble(): void {

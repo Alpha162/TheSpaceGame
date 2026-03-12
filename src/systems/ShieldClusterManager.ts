@@ -1,6 +1,8 @@
 import { distanceBetween } from '../utils/Helpers';
 import {
     SHIELD_CLUSTER_OVERLAP_MARGIN,
+    SHIELD_TUNE_DEFAULT, SHIELD_TUNE_MIN, SHIELD_TUNE_MAX,
+    SHIELD_TUNE_DRIFT_PER_HIT, SHIELD_TUNE_DRIFT_DECAY, SHIELD_TUNE_MANUAL_DRIFT_MULT,
     COLOUR_CLUSTER_VIOLET,
     CLUSTER_ARC_SEGMENTS,
     CLUSTER_ARC_AMPLITUDE,
@@ -23,6 +25,10 @@ export interface IClusterShield {
     /** Barycenter of the cluster this shield belongs to */
     clusterCenterX: number;
     clusterCenterY: number;
+    /** Shield tuning (0.0 = kinetic, 0.5 = balanced, 1.0 = energy) */
+    tuning: number;
+    manualLock: boolean;
+    lastTuningDriftTime: number;
 }
 
 export interface ShieldCluster {
@@ -31,6 +37,9 @@ export interface ShieldCluster {
     syncPhase: number;
     centerX: number;
     centerY: number;
+    clusterTuning: number;
+    clusterManualLock: boolean;
+    lastTuningDriftTime: number;
 }
 
 export class ShieldClusterManager {
@@ -60,8 +69,15 @@ export class ShieldClusterManager {
     rebuild(shields: IClusterShield[]): void {
         this.memberToCluster.clear();
 
-        // Reset all shields
+        // Dissolve: shields leaving clusters inherit cluster tuning
         for (const s of shields) {
+            if (s.inCluster) {
+                const oldCluster = this.memberToCluster.get(s);
+                if (oldCluster) {
+                    s.tuning = oldCluster.clusterTuning;
+                    s.manualLock = oldCluster.clusterManualLock;
+                }
+            }
             s.inCluster = false;
         }
 
@@ -137,7 +153,15 @@ export class ShieldClusterManager {
             const key = this.clusterKey(members);
             const prevPhase = this.prevPhases.get(key) ?? 0;
 
-            const cluster: ShieldCluster = { members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy };
+            // Average tuning across members for cluster tuning
+            const avgTuning = members.reduce((sum, m) => sum + m.tuning, 0) / members.length;
+
+            const cluster: ShieldCluster = {
+                members, edges, syncPhase: prevPhase, centerX: cx, centerY: cy,
+                clusterTuning: avgTuning,
+                clusterManualLock: false,
+                lastTuningDriftTime: 0
+            };
             this.clusters.push(cluster);
             newPhases.set(key, prevPhase);
             for (const m of members) {
@@ -175,6 +199,30 @@ export class ShieldClusterManager {
         if (activeMembers.some(m => m.getHeat() >= 1)) {
             for (const member of activeMembers) {
                 member.collapseShield();
+            }
+        }
+    }
+
+    /** Apply tuning drift at cluster level (one drift per hit for the whole cluster) */
+    applyClusterTuningDrift(cluster: ShieldCluster, incomingDamageType: number): void {
+        const driftRate = cluster.clusterManualLock
+            ? SHIELD_TUNE_DRIFT_PER_HIT * SHIELD_TUNE_MANUAL_DRIFT_MULT
+            : SHIELD_TUNE_DRIFT_PER_HIT;
+
+        if (incomingDamageType < cluster.clusterTuning) {
+            cluster.clusterTuning = Math.max(SHIELD_TUNE_MIN, cluster.clusterTuning - driftRate);
+        } else if (incomingDamageType > cluster.clusterTuning) {
+            cluster.clusterTuning = Math.min(SHIELD_TUNE_MAX, cluster.clusterTuning + driftRate);
+        }
+    }
+
+    /** Idle decay for all cluster tunings — called each frame */
+    updateClusterTuningDecay(): void {
+        for (const cluster of this.clusters) {
+            if (cluster.clusterTuning > 0.5) {
+                cluster.clusterTuning = Math.max(0.5, cluster.clusterTuning - SHIELD_TUNE_DRIFT_DECAY);
+            } else if (cluster.clusterTuning < 0.5) {
+                cluster.clusterTuning = Math.min(0.5, cluster.clusterTuning + SHIELD_TUNE_DRIFT_DECAY);
             }
         }
     }

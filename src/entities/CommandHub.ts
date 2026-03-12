@@ -4,6 +4,7 @@ import {
     COMMAND_HUB_HEALTH, COMMAND_HUB_POWER_GEN, COMMAND_HUB_RADIUS,
     COMMAND_HUB_SHIELD_RADIUS, COMMAND_HUB_SHIELD_HEAT_DECAY,
     SHIELD_ABSORB_HEAT_PER_DAMAGE, SHIELD_DEPLOY_SPEED,
+    SHIELD_TUNE_DEFAULT,
     COLOUR_CYAN, COLOUR_DARK_METAL, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
 import { hexagonPoints } from '../utils/Helpers';
@@ -32,6 +33,10 @@ export class CommandHub extends GameNode implements IClusterShield {
     clusterSyncPhase = 0;
     clusterCenterX = 0;
     clusterCenterY = 0;
+    /** Shield tuning (0.0 = kinetic, 0.5 = balanced, 1.0 = energy) */
+    tuning = SHIELD_TUNE_DEFAULT;
+    manualLock = false;
+    lastTuningDriftTime = 0;
 
     constructor(scene: Phaser.Scene, x: number, y: number) {
         super(scene, x, y, COMMAND_HUB_HEALTH, 0, COMMAND_HUB_RADIUS);
@@ -80,6 +85,7 @@ export class CommandHub extends GameNode implements IClusterShield {
                 this.hubShieldCooldown = 0;
                 this.hubShieldHeat = 0;
                 this.hubShieldActive = true;
+                this.tuning = SHIELD_TUNE_DEFAULT; // Reset tuning on redeploy
             }
             this.drawShieldBubble();
             return;

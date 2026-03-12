@@ -11,8 +11,12 @@ import type { MineralManager } from './MineralManager';
 import {
     WORLD_WIDTH, WORLD_HEIGHT, ENEMY_MINERAL_REWARD,
     ENEMY_PROJECTILE_SPEED, ENEMY_THREAT_WEIGHT,
+    SHIELD_ABSORB_HEAT_PER_DAMAGE,
+    SHIELD_TUNE_BLEEDTHROUGH_MIN, SHIELD_TUNE_BLEEDTHROUGH_MAX,
+    TUNING_DRIFT_MIN_INTERVAL_MS,
     COLOUR_CYAN, COLOUR_AMBER, COLOUR_RED
 } from '../utils/Constants';
+import type { ShieldCluster } from './ShieldClusterManager';
 import { distanceBetween } from '../utils/Helpers';
 import { SoundManager } from './SoundManager';
 
@@ -128,9 +132,12 @@ export class CombatSystem {
         }
     }
 
+    /** AoE drift guard: tracks clusters/shields that have already received drift in current AoE */
+    private aoeDriftedClusters: Set<ShieldCluster | Shield | CommandHub> | null = null;
+
     /**
      * Unified damage pipeline. ALL damage flows through this method.
-     * Until Phase 5 (shield tuning), bleedthrough = 1.0 — shields absorb full damage as heat.
+     * Integrates shield tuning: bleedthrough scales heat, tuning drifts toward incoming type.
      */
     applyDamage(
         source: DamageEntity,
@@ -140,14 +147,13 @@ export class CombatSystem {
         isBeam: boolean = false,
         isAoE: boolean = false
     ): void {
-        // Determine direction: is this player → enemy or enemy → player?
         const targetIsEnemy = target instanceof Enemy;
 
         if (targetIsEnemy) {
             // Player weapon → enemy: check enemy shield first
             const enemy = target as Enemy;
             if (enemy.isShieldUp()) {
-                enemy.absorbShieldDamage(damage);
+                enemy.absorbShieldDamage(damage, damageType, isBeam);
                 SoundManager.play('shieldHit');
             } else {
                 enemy.takeDamage(damage);
@@ -158,14 +164,6 @@ export class CombatSystem {
             const hub = this.powerNetwork.getHub();
             if (!hub) return;
 
-            const allNodes: GameNode[] = [hub, ...this.buildSystem.getPlacedNodes()];
-            const activeShields: Shield[] = [];
-            for (const node of this.powerNetwork.getAllNodes()) {
-                if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
-                    activeShields.push(node);
-                }
-            }
-
             // For beams, use ray-cast to find intercepting shield
             if (isBeam) {
                 // Check hub shield first
@@ -175,27 +173,30 @@ export class CombatSystem {
                         hub.x, hub.y, hub.hubShieldRadius
                     );
                     if (intersects) {
-                        hub.absorbShieldDamage(damage);
-                        SoundManager.play('shieldHit');
-                        return; // Shield absorbed the beam
+                        this.applyPlayerShieldDamage(hub, damage, damageType, isBeam, isAoE);
+                        return;
                     }
                 }
 
                 // Check player-built shields
+                const activeShields: Shield[] = [];
+                for (const node of this.powerNetwork.getAllNodes()) {
+                    if (node instanceof Shield && node.isShieldActive() && node.bubbleRadius > 0) {
+                        activeShields.push(node);
+                    }
+                }
                 const interceptingShield = this.checkBeamShieldIntersection(
                     { x: source.x, y: source.y },
                     { x: target.x, y: target.y },
                     activeShields
                 );
                 if (interceptingShield) {
-                    interceptingShield.absorbDamage(damage);
-                    SoundManager.play('shieldHit');
-                    return; // Shield absorbed the beam
+                    this.applyPlayerShieldDamage(interceptingShield, damage, damageType, isBeam, isAoE);
+                    return;
                 }
             }
 
             // No shield intercepted (or not a beam — projectile shields handled separately)
-            // Apply damage directly to target
             const node = target as GameNode;
             const died = node.takeDamage(damage);
             SoundManager.play('hit');
@@ -203,6 +204,127 @@ export class CombatSystem {
                 this.handleNodeDeath(node);
             }
         }
+    }
+
+    /**
+     * Apply damage to a player shield (Shield or CommandHub) with tuning bleedthrough + drift.
+     * Handles beam drift rate cap and AoE cluster drift guard.
+     */
+    private applyPlayerShieldDamage(
+        shield: Shield | CommandHub,
+        damage: number,
+        damageType: number,
+        isBeam: boolean,
+        isAoE: boolean
+    ): void {
+        // Get effective tuning (cluster tuning if clustered, individual otherwise)
+        let effectiveTuning: number;
+        let cluster: ShieldCluster | undefined;
+
+        if (shield instanceof Shield && shield.clusterManager) {
+            cluster = shield.clusterManager.getClusterFor(shield);
+        } else if (shield instanceof CommandHub && shield.clusterManager) {
+            cluster = shield.clusterManager.getClusterFor(shield);
+        }
+
+        effectiveTuning = cluster ? cluster.clusterTuning : (shield as Shield | CommandHub).tuning;
+
+        // Calculate bleedthrough from mismatch
+        const mismatch = Math.abs(effectiveTuning - damageType);
+        const bleedthrough = SHIELD_TUNE_BLEEDTHROUGH_MIN
+            + (SHIELD_TUNE_BLEEDTHROUGH_MAX - SHIELD_TUNE_BLEEDTHROUGH_MIN)
+            * mismatch;
+
+        // Apply tuning drift BEFORE heat (so bleedthrough uses pre-drift tuning)
+        this.applyTuningDrift(shield, cluster, damageType, isBeam, isAoE);
+
+        // Apply heat scaled by bleedthrough
+        const heatIncrease = damage * bleedthrough * SHIELD_ABSORB_HEAT_PER_DAMAGE;
+
+        if (shield instanceof Shield) {
+            if (shield.clusterManager) {
+                shield.clusterManager.distributeHeat(shield, heatIncrease);
+            } else {
+                shield.setHeat(shield.getHeat() + heatIncrease);
+                if (shield.getHeat() >= 1) {
+                    shield.collapseShield();
+                }
+            }
+        } else {
+            // CommandHub
+            const hub = shield as CommandHub;
+            if (hub.clusterManager) {
+                hub.clusterManager.distributeHeat(hub, heatIncrease);
+            } else {
+                hub.setHeat(hub.getHeat() + heatIncrease);
+                if (hub.getHeat() >= 1) {
+                    hub.collapseShield();
+                }
+            }
+        }
+
+        SoundManager.play('shieldHit');
+    }
+
+    /**
+     * Apply tuning drift to a shield or its cluster, respecting edge case guards:
+     * - Beam drift rate cap: max 5 drift applications per second (200ms interval)
+     * - AoE cluster drift guard: one drift per cluster per AoE detonation
+     */
+    private applyTuningDrift(
+        shield: Shield | CommandHub,
+        cluster: ShieldCluster | undefined,
+        damageType: number,
+        isBeam: boolean,
+        isAoE: boolean
+    ): void {
+        const now = performance.now();
+
+        // Determine the drift target (cluster or individual shield)
+        const driftTarget = cluster ?? shield;
+
+        // AoE cluster drift guard: skip if this target already drifted this AoE
+        if (isAoE && this.aoeDriftedClusters) {
+            if (this.aoeDriftedClusters.has(driftTarget as any)) return;
+            this.aoeDriftedClusters.add(driftTarget as any);
+        }
+
+        // Beam drift rate cap: only drift if 200ms elapsed since last drift
+        const lastDriftTime = cluster ? cluster.lastTuningDriftTime : shield.lastTuningDriftTime;
+        if (isBeam) {
+            if (now - lastDriftTime < TUNING_DRIFT_MIN_INTERVAL_MS) return;
+        }
+
+        // Apply drift
+        if (cluster) {
+            const clusterMgr = (shield instanceof Shield ? shield.clusterManager : (shield as CommandHub).clusterManager)!;
+            clusterMgr.applyClusterTuningDrift(cluster, damageType);
+            cluster.lastTuningDriftTime = now;
+        } else if (shield instanceof Shield) {
+            shield.applyTuningDrift(damageType);
+            shield.lastTuningDriftTime = now;
+        } else {
+            // CommandHub solo — apply drift directly
+            const hub = shield as CommandHub;
+            if (damageType < hub.tuning) {
+                hub.tuning = Math.max(0, hub.tuning - 0.03);
+            } else if (damageType > hub.tuning) {
+                hub.tuning = Math.min(1, hub.tuning + 0.03);
+            }
+            hub.lastTuningDriftTime = now;
+        }
+    }
+
+    /**
+     * Begin an AoE drift guard scope. Call before processing AoE hits,
+     * and call endAoeDriftGuard() after.
+     */
+    beginAoeDriftGuard(): void {
+        this.aoeDriftedClusters = new Set();
+    }
+
+    endAoeDriftGuard(): void {
+        this.aoeDriftedClusters = null;
     }
 
     /**
@@ -544,14 +666,13 @@ export class CombatSystem {
                     }
                 }
             } else {
-                // Enemy projectile — blocked by shields, then hits nodes
+                // Enemy projectile — blocked by shields (with tuning), then hits nodes
 
                 // Check hub shield intercept
                 if (hub.isHubShieldUp()) {
                     const dist = distanceBetween(p.x, p.y, hub.x, hub.y);
                     if (dist <= hub.hubShieldRadius) {
-                        hub.absorbShieldDamage(p.damage);
-                        SoundManager.play('shieldHit');
+                        this.applyPlayerShieldDamage(hub, p.damage, p.damageType, false, false);
                         hit = true;
                     }
                 }
@@ -561,8 +682,7 @@ export class CombatSystem {
                     for (const shield of activeShields) {
                         const dist = distanceBetween(p.x, p.y, shield.x, shield.y);
                         if (dist <= shield.bubbleRadius) {
-                            shield.absorbDamage(p.damage);
-                            SoundManager.play('shieldHit');
+                            this.applyPlayerShieldDamage(shield, p.damage, p.damageType, false, false);
                             hit = true;
                             break;
                         }
